@@ -5,4 +5,5 @@
 export interface Env extends Cloudflare.Env {
 	POLICY_AUD: string;
 	TEAM_DOMAIN: string;
+	NOTION_API_KEY: string;
 }
