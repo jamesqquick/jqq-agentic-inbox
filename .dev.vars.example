@@ -1,3 +1,8 @@
 # Cloudflare Access (required in production). TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 POLICY_AUD=your-access-policy-audience-tag
 TEAM_DOMAIN=https://your-team.cloudflareaccess.com
+
+# Notion integration (required for [IDEA] email action).
+# Create an internal integration at https://www.notion.so/my-integrations
+# and share the To-Do database with it.
+NOTION_API_KEY=secret_xxx
