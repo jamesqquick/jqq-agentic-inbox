@@ -1,8 +1,6 @@
 /**
  * Notion API types and helpers for the To-Do database integration.
  *
- * Database: To-Do (2b3404eb-af40-4869-955a-da33f177d5e8)
- *
  * Schema:
  *   Name        — title    (required)
  *   Status      — select   (Next Up, In Progress, Completed, Ongoing, Archived)
@@ -33,8 +31,6 @@ export interface NotionDateProperty {
 }
 
 // ── To-Do database specific types ──────────────────────────────────
-
-export const NOTION_TODO_DATABASE_ID = "4f61a9b1-4920-49ed-b960-004e3577ad3d";
 
 export type NotionTodoStatus =
 	| "Next Up"
@@ -75,13 +71,16 @@ export interface NotionCreatePageResponse {
 
 // ── Helper to build a create-page request ──────────────────────────
 
-export function buildCreateTodoRequest(params: {
-	name: string;
-	status?: NotionTodoStatus;
-	priority?: NotionTodoPriority;
-	dueDate?: string;
-	bodyText?: string;
-}): NotionCreatePageRequest {
+export function buildCreateTodoRequest(
+	databaseId: string,
+	params: {
+		name: string;
+		status?: NotionTodoStatus;
+		priority?: NotionTodoPriority;
+		dueDate?: string;
+		bodyText?: string;
+	},
+): NotionCreatePageRequest {
 	const properties: NotionTodoProperties = {
 		Name: {
 			title: [{ type: "text", text: { content: params.name } }],
@@ -112,7 +111,7 @@ export function buildCreateTodoRequest(params: {
 	}
 
 	return {
-		parent: { database_id: NOTION_TODO_DATABASE_ID },
+		parent: { database_id: databaseId },
 		properties,
 		children: children.length > 0 ? children : undefined,
 	};
@@ -124,6 +123,7 @@ const NOTION_API_VERSION = "2022-06-28";
 
 export async function createNotionTodo(
 	apiKey: string,
+	databaseId: string,
 	params: {
 		name: string;
 		status?: NotionTodoStatus;
@@ -132,7 +132,7 @@ export async function createNotionTodo(
 		bodyText?: string;
 	},
 ): Promise<NotionCreatePageResponse> {
-	const body = buildCreateTodoRequest(params);
+	const body = buildCreateTodoRequest(databaseId, params);
 
 	const response = await fetch("https://api.notion.com/v1/pages", {
 		method: "POST",

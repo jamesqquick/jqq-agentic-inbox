@@ -6,3 +6,4 @@ TEAM_DOMAIN=https://your-team.cloudflareaccess.com
 # Create an internal integration at https://www.notion.so/my-integrations
 # and share the To-Do database with it.
 NOTION_API_KEY=secret_xxx
+# NOTION_DATABASE_ID is set in wrangler.jsonc vars, but can be overridden here.

@@ -14,7 +14,8 @@
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
 		"DOMAINS": "jamesqquick.com",
-		"EMAIL_ADDRESSES": []
+		"EMAIL_ADDRESSES": [],
+		"NOTION_DATABASE_ID": "4f61a9b1-4920-49ed-b960-004e3577ad3d"
 	},
 	"send_email": [
 		{
