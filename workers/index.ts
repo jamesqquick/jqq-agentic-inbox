@@ -408,6 +408,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	const parsed = parseSubjectTag(parsedEmail.subject || "");
 
 	if (parsed) {
+		console.log(`[Actions] Detected tag [${parsed.tag}] in subject, routing to action handler (emailId: ${messageId})`);
 		ctx.waitUntil(
 			routeEmailAction({
 				emailId: messageId,
@@ -419,7 +420,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 				recipient: mailboxId,
 				mailboxId,
 				env,
-			}).catch((e) => console.error("Action routing failed:", (e as Error).message)),
+			}).catch((e) => console.error("Action routing failed:", (e as Error).message, (e as Error).stack)),
 		);
 	} else {
 		const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));

@@ -26,17 +26,23 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 		return;
 	}
 
-	console.log(`[Idea] Saving idea: "${ideaTitle}"`);
+	console.log(`[Idea] Saving idea: "${ideaTitle}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
 
 	// Create the Notion To-Do item
-	const result = await createNotionTodo(notionApiKey, {
-		name: ideaTitle,
-		status: "Next Up",
-		priority: "Medium",
-		bodyText: ctx.body || undefined,
-	});
+	let result;
+	try {
+		result = await createNotionTodo(notionApiKey, {
+			name: ideaTitle,
+			status: "Next Up",
+			priority: "Medium",
+			bodyText: ctx.body || undefined,
+		});
+	} catch (e) {
+		console.error(`[Idea] Failed to create Notion page:`, (e as Error).message);
+		return;
+	}
 
-	console.log(`[Idea] Created Notion page: ${result.url}`);
+	console.log(`[Idea] Created Notion page: ${result.id} — ${result.url}`);
 
 	// Send a confirmation reply email
 	const fromDomain = ctx.mailboxId.split("@")[1];
