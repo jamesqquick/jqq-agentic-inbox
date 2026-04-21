@@ -60,12 +60,16 @@ Respond in JSON format only, no other text: {"title": "...", "description": "...
 			}
 		}
 
-		console.warn("[ContentIdea] AI response did not contain valid JSON, using raw subject");
+		console.warn("[ContentIdea] AI response did not contain valid JSON, using raw input");
 	} catch (e) {
-		console.warn("[ContentIdea] AI summary generation failed, using raw subject:", (e as Error).message);
+		console.warn("[ContentIdea] AI summary generation failed, using raw input:", (e as Error).message);
 	}
 
-	return { title: subject, description: body || "" };
+	// Fallback: use subject if available, otherwise truncate body for title
+	const fallbackTitle = subject && subject !== "(see body)"
+		? subject
+		: body.substring(0, 80).trim() || "Untitled idea";
+	return { title: fallbackTitle, description: body || "" };
 }
 
 export interface ContentIdeaOptions {
@@ -107,23 +111,31 @@ export async function handleContentIdea(
 	}
 
 	const rawSubject = ctx.subject.trim();
-	if (!rawSubject) {
-		console.warn(`[${ctx.tag}] Empty subject after tag removal for email ${ctx.emailId}, skipping`);
+	const hasSubject = rawSubject.length > 0;
+	const hasBody = ctx.body.trim().length > 0;
+
+	if (!hasSubject && !hasBody) {
+		console.warn(`[${ctx.tag}] Empty subject and body for email ${ctx.emailId}, skipping`);
 		return;
 	}
 
-	console.log(`[${ctx.tag}] Processing: "${rawSubject}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
-	console.log(`[${ctx.tag}] Body length: ${ctx.body.length}, body preview: "${ctx.body.substring(0, 200)}"`);
+	console.log(`[${ctx.tag}] Processing: subject="${rawSubject || "(empty)"}", body=${ctx.body.length} chars (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
+	if (hasBody) {
+		console.log(`[${ctx.tag}] Body preview: "${ctx.body.substring(0, 200)}"`);
+	}
 
 	// Extract any URLs from the email
 	const links = extractLinks(rawSubject, ctx.body);
 	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${links.length > 0 ? `: ${links.join(", ")}` : ""}`);
 
 	// Generate a concise title and description with AI
+	// Use body as the primary input if subject is empty
+	const aiSubjectInput = hasSubject ? rawSubject : "(see body)";
+	const aiBodyInput = ctx.body;
 	const { title: ideaTitle, description: ideaDescription } = await generateIdeaSummary(
 		ctx.env.AI,
-		rawSubject,
-		ctx.body,
+		aiSubjectInput,
+		aiBodyInput,
 		options.promptHint,
 	);
 
