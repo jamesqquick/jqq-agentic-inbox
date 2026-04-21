@@ -2,13 +2,14 @@
  * Notion API types and helpers for the To-Do database integration.
  *
  * Schema:
- *   Name        — title    (required)
- *   Status      — select   (Next Up, In Progress, Completed, Ongoing, Archived)
- *   Priority    — select   (High 🔥, Medium, Low)
- *   Due Date    — date     (ISO-8601)
- *   Assign      — person   (user IDs)
- *   Parent item — relation (self-relation)
- *   Sub-item    — relation (auto-populated)
+ *   Name             — title    (required)
+ *   Status           — select   (Next Up, In Progress, Completed, Ongoing, Archived, Idea)
+ *   Priority         — select   (High 🔥, Medium, Low)
+ *   Content Category — select   (Blog Post, LinkedIn, YouTube Short, YouTube, Twitter)
+ *   Due Date         — date     (ISO-8601)
+ *   Assign           — person   (user IDs)
+ *   Parent item      — relation (self-relation)
+ *   Sub-item         — relation (auto-populated)
  */
 
 // ── Notion property value types ────────────────────────────────────
@@ -42,10 +43,18 @@ export type NotionTodoStatus =
 
 export type NotionTodoPriority = "High 🔥" | "Medium" | "Low";
 
+export type NotionContentCategory =
+	| "Blog Post"
+	| "LinkedIn"
+	| "YouTube Short"
+	| "YouTube"
+	| "Twitter";
+
 export interface NotionTodoProperties {
 	Name: NotionTitleProperty;
 	Status?: NotionSelectProperty;
 	Priority?: NotionSelectProperty;
+	"Content Category"?: NotionSelectProperty;
 	"Due Date"?: NotionDateProperty;
 }
 
@@ -92,6 +101,7 @@ export function buildCreateTodoRequest(
 		name: string;
 		status?: NotionTodoStatus;
 		priority?: NotionTodoPriority;
+		category?: NotionContentCategory;
 		dueDate?: string;
 		bodyText?: string;
 		links?: string[];
@@ -109,6 +119,10 @@ export function buildCreateTodoRequest(
 
 	if (params.priority) {
 		properties.Priority = { select: { name: params.priority } };
+	}
+
+	if (params.category) {
+		properties["Content Category"] = { select: { name: params.category } };
 	}
 
 	if (params.dueDate) {
@@ -172,6 +186,7 @@ export async function createNotionTodo(
 		name: string;
 		status?: NotionTodoStatus;
 		priority?: NotionTodoPriority;
+		category?: NotionContentCategory;
 		dueDate?: string;
 		bodyText?: string;
 		links?: string[];
