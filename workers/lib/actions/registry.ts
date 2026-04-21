@@ -2,6 +2,7 @@ import type { ActionHandler } from "./types";
 import { handleLog } from "./handlers/log";
 import { handleSummary } from "./handlers/summary";
 import { handleIdea } from "./handlers/idea";
+import { handleTwitter } from "./handlers/twitter";
 
 /**
  * Hardcoded mapping of subject-line tags to action handlers.
@@ -15,6 +16,7 @@ const actionRegistry: Record<string, ActionHandler> = {
 	LOG: handleLog,
 	SUMMARY: handleSummary,
 	IDEA: handleIdea,
+	TWITTER: handleTwitter,
 };
 
 export function getActionHandler(tag: string): ActionHandler | undefined {
