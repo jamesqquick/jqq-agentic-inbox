@@ -20,6 +20,12 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 		return;
 	}
 
+	const notionDatabaseId = ctx.env.NOTION_DATABASE_ID;
+	if (!notionDatabaseId) {
+		console.error("[Idea] NOTION_DATABASE_ID is not configured, skipping");
+		return;
+	}
+
 	const ideaTitle = ctx.subject.trim();
 	if (!ideaTitle) {
 		console.warn(`[Idea] Empty subject after tag removal for email ${ctx.emailId}, skipping`);
@@ -31,7 +37,7 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 	// Create the Notion To-Do item
 	let result;
 	try {
-		result = await createNotionTodo(notionApiKey, {
+		result = await createNotionTodo(notionApiKey, notionDatabaseId, {
 			name: ideaTitle,
 			status: "Next Up",
 			priority: "Medium",
