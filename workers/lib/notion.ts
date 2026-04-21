@@ -49,19 +49,33 @@ export interface NotionTodoProperties {
 	"Due Date"?: NotionDateProperty;
 }
 
-/** Block content to add as the page body. */
+/** Block content types for the page body. */
 export interface NotionParagraphBlock {
 	object: "block";
 	type: "paragraph";
 	paragraph: { rich_text: NotionRichText[] };
 }
 
+export interface NotionHeadingBlock {
+	object: "block";
+	type: "heading_2";
+	heading_2: { rich_text: NotionRichText[] };
+}
+
+export interface NotionBulletedListBlock {
+	object: "block";
+	type: "bulleted_list_item";
+	bulleted_list_item: { rich_text: NotionRichText[] };
+}
+
+export type NotionBlock = NotionParagraphBlock | NotionHeadingBlock | NotionBulletedListBlock;
+
 // ── API request / response types ───────────────────────────────────
 
 export interface NotionCreatePageRequest {
 	parent: { database_id: string };
 	properties: NotionTodoProperties;
-	children?: NotionParagraphBlock[];
+	children?: NotionBlock[];
 }
 
 export interface NotionCreatePageResponse {
@@ -80,6 +94,7 @@ export function buildCreateTodoRequest(
 		priority?: NotionTodoPriority;
 		dueDate?: string;
 		bodyText?: string;
+		links?: string[];
 	},
 ): NotionCreatePageRequest {
 	const properties: NotionTodoProperties = {
@@ -100,7 +115,8 @@ export function buildCreateTodoRequest(
 		properties["Due Date"] = { date: { start: params.dueDate } };
 	}
 
-	const children: NotionParagraphBlock[] = [];
+	const children: NotionBlock[] = [];
+
 	if (params.bodyText?.trim()) {
 		children.push({
 			object: "block",
@@ -109,6 +125,33 @@ export function buildCreateTodoRequest(
 				rich_text: [{ type: "text", text: { content: params.bodyText } }],
 			},
 		});
+	}
+
+	if (params.links && params.links.length > 0) {
+		// Add a blank line before the references section
+		children.push({
+			object: "block",
+			type: "paragraph",
+			paragraph: { rich_text: [] },
+		});
+
+		children.push({
+			object: "block",
+			type: "heading_2",
+			heading_2: {
+				rich_text: [{ type: "text", text: { content: "References" } }],
+			},
+		});
+
+		for (const link of params.links) {
+			children.push({
+				object: "block",
+				type: "bulleted_list_item",
+				bulleted_list_item: {
+					rich_text: [{ type: "text", text: { content: link, link: { url: link } } }],
+				},
+			});
+		}
 	}
 
 	return {
@@ -131,6 +174,7 @@ export async function createNotionTodo(
 		priority?: NotionTodoPriority;
 		dueDate?: string;
 		bodyText?: string;
+		links?: string[];
 	},
 ): Promise<NotionCreatePageResponse> {
 	const body = buildCreateTodoRequest(databaseId, params);

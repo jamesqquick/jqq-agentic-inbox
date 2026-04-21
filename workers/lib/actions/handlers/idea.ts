@@ -56,12 +56,25 @@ Respond in JSON format only, no other text: {"title": "...", "description": "...
 	return { title: subject, description: body || "" };
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
+
+/**
+ * Extract unique URLs from the email subject and body.
+ */
+function extractLinks(subject: string, body: string): string[] {
+	const urls = new Set<string>();
+	for (const match of subject.matchAll(URL_REGEX)) urls.add(match[0]);
+	for (const match of body.matchAll(URL_REGEX)) urls.add(match[0]);
+	return [...urls];
+}
+
 /**
  * [IDEA] action handler.
  *
  * Uses Workers AI to generate a concise title and description, then saves
  * the idea to the Notion To-Do database with status "Idea" and sends a
  * confirmation email back to the sender with a link to the Notion page.
+ * Any URLs found in the email are added as a "References" section.
  *
  * Usage: Send an email with subject "[IDEA] Your idea details here"
  * The email body (if any) provides additional context for the AI.
@@ -87,6 +100,12 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 
 	console.log(`[Idea] Processing idea: "${rawSubject}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
 
+	// Extract any URLs from the email
+	const links = extractLinks(rawSubject, ctx.body);
+	if (links.length > 0) {
+		console.log(`[Idea] Found ${links.length} reference link(s): ${links.join(", ")}`);
+	}
+
 	// Generate a concise title and description with AI
 	const { title: ideaTitle, description: ideaDescription } = await generateIdeaSummary(
 		ctx.env.AI,
@@ -101,6 +120,7 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 			name: ideaTitle,
 			status: "Idea",
 			bodyText: ideaDescription || undefined,
+			links: links.length > 0 ? links : undefined,
 		});
 	} catch (e) {
 		console.error(`[Idea] Failed to create Notion page:`, (e as Error).message);
