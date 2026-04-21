@@ -113,12 +113,11 @@ export async function handleContentIdea(
 	}
 
 	console.log(`[${ctx.tag}] Processing: "${rawSubject}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
+	console.log(`[${ctx.tag}] Body length: ${ctx.body.length}, body preview: "${ctx.body.substring(0, 200)}"`);
 
 	// Extract any URLs from the email
 	const links = extractLinks(rawSubject, ctx.body);
-	if (links.length > 0) {
-		console.log(`[${ctx.tag}] Found ${links.length} reference link(s): ${links.join(", ")}`);
-	}
+	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${links.length > 0 ? `: ${links.join(", ")}` : ""}`);
 
 	// Generate a concise title and description with AI
 	const { title: ideaTitle, description: ideaDescription } = await generateIdeaSummary(
@@ -129,13 +128,16 @@ export async function handleContentIdea(
 	);
 
 	// Step 1: Create the Content Pipeline item
+	const sourceUrl = links[0] || undefined;
+	console.log(`[${ctx.tag}] Source URL for Notion: ${sourceUrl ?? "(none)"}`);
+
 	let contentItem;
 	try {
 		contentItem = await createContentItem(notionApiKey, pipelineDatabaseId, {
 			title: ideaTitle,
 			pipelineStatus: "Idea",
 			category: options.category,
-			source: links[0] || undefined,
+			source: sourceUrl,
 			bodyText: ideaDescription || undefined,
 			links: links.length > 0 ? links : undefined,
 			inputEmails: ctx.emailId,
