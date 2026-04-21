@@ -37,7 +37,8 @@ export type NotionTodoStatus =
 	| "In Progress"
 	| "Completed"
 	| "Ongoing"
-	| "Archived";
+	| "Archived"
+	| "Idea";
 
 export type NotionTodoPriority = "High 🔥" | "Medium" | "Low";
 

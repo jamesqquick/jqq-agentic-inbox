@@ -5,13 +5,66 @@ import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpe
 import { Folders } from "../../../../shared/folders";
 
 /**
+ * Use Workers AI to generate a concise title and description from the raw
+ * email subject and body. Falls back to the raw subject if AI fails.
+ */
+async function generateIdeaSummary(
+	ai: any,
+	subject: string,
+	body: string,
+): Promise<{ title: string; description: string }> {
+	try {
+		const prompt = `Given the following idea submitted via email, generate:
+1. A short title (max 10 words, concise and actionable)
+2. A brief description (1-2 sentences summarizing the core idea)
+
+Subject: ${subject}
+${body ? `Body: ${body}` : ""}
+
+Respond in JSON format only, no other text: {"title": "...", "description": "..."}`;
+
+		const aiResponse = await ai.run("@cf/meta/llama-3.1-8b-instruct-fast" as any, {
+			messages: [
+				{
+					role: "system",
+					content: "You generate concise titles and descriptions for ideas. Always respond with valid JSON only.",
+				},
+				{ role: "user", content: prompt },
+			],
+		});
+
+		const raw = typeof aiResponse === "string"
+			? aiResponse
+			: (aiResponse as { response?: string }).response || "";
+
+		// Extract JSON from the response (in case the model wraps it in markdown)
+		const jsonMatch = raw.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			const parsed = JSON.parse(jsonMatch[0]);
+			if (parsed.title && parsed.description) {
+				console.log(`[Idea] AI generated title: "${parsed.title}"`);
+				return { title: parsed.title, description: parsed.description };
+			}
+		}
+
+		console.warn("[Idea] AI response did not contain valid JSON, using raw subject");
+	} catch (e) {
+		console.warn("[Idea] AI summary generation failed, using raw subject:", (e as Error).message);
+	}
+
+	// Fallback: use the raw subject as title, body as description
+	return { title: subject, description: body || "" };
+}
+
+/**
  * [IDEA] action handler.
  *
- * Saves an idea to the Notion To-Do database and sends a confirmation
- * email back to the sender with a link to the Notion page.
+ * Uses Workers AI to generate a concise title and description, then saves
+ * the idea to the Notion To-Do database with status "Idea" and sends a
+ * confirmation email back to the sender with a link to the Notion page.
  *
- * Usage: Send an email with subject "[IDEA] Your idea title here"
- * The email body (if any) is added as page content in Notion.
+ * Usage: Send an email with subject "[IDEA] Your idea details here"
+ * The email body (if any) provides additional context for the AI.
  */
 export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 	const notionApiKey = ctx.env.NOTION_API_KEY;
@@ -26,22 +79,28 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 		return;
 	}
 
-	const ideaTitle = ctx.subject.trim();
-	if (!ideaTitle) {
+	const rawSubject = ctx.subject.trim();
+	if (!rawSubject) {
 		console.warn(`[Idea] Empty subject after tag removal for email ${ctx.emailId}, skipping`);
 		return;
 	}
 
-	console.log(`[Idea] Saving idea: "${ideaTitle}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
+	console.log(`[Idea] Processing idea: "${rawSubject}" (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
+
+	// Generate a concise title and description with AI
+	const { title: ideaTitle, description: ideaDescription } = await generateIdeaSummary(
+		ctx.env.AI,
+		rawSubject,
+		ctx.body,
+	);
 
 	// Create the Notion To-Do item
 	let result;
 	try {
 		result = await createNotionTodo(notionApiKey, notionDatabaseId, {
 			name: ideaTitle,
-			status: "Next Up",
-			priority: "Medium",
-			bodyText: ctx.body || undefined,
+			status: "Idea",
+			bodyText: ideaDescription || undefined,
 		});
 	} catch (e) {
 		console.error(`[Idea] Failed to create Notion page:`, (e as Error).message);
@@ -59,12 +118,14 @@ export const handleIdea: ActionHandler = async (ctx: ActionContext) => {
 
 	const replySubject = `Saved: ${ideaTitle}`;
 	const escapedTitle = escapeHtml(ideaTitle);
+	const escapedDescription = escapeHtml(ideaDescription);
 	const escapedUrl = escapeHtml(result.url);
 
-	const textBody = `Saved to Notion: "${ideaTitle}"\n\nView it here: ${result.url}`;
+	const textBody = `Saved to Notion: "${ideaTitle}"\n\n${ideaDescription}\n\nView it here: ${result.url}`;
 	const htmlBody = `
 		<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px;">
 			<p>Saved to Notion: <strong>${escapedTitle}</strong></p>
+			${escapedDescription ? `<p style="color: #555;">${escapedDescription}</p>` : ""}
 			<p><a href="${escapedUrl}">View in Notion</a></p>
 		</div>
 	`.trim();
