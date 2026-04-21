@@ -14,7 +14,7 @@
  *
  * Content Pipeline Database Schema:
  *   Title            — title    (required)
- *   Pipeline Status  — status   (Idea, Direction, Outline, Script, Review, Ready, Recording, Published)
+ *   Status  — status   (Idea, Direction, Outline, Script, Review, Ready, Recording, Published)
  *   Content Category — select   (YouTube, Blog Post, Twitter, LinkedIn, YouTube Short)
  *   Source           — url
  *   Direction        — select   (Tutorial, Opinion, Comparison, Walkthrough, Explainer)
@@ -139,7 +139,7 @@ export interface NotionStatusProperty {
 
 export interface ContentPipelineProperties {
 	Title: NotionTitleProperty;
-	"Pipeline Status"?: NotionStatusProperty;
+	"Status"?: NotionStatusProperty;
 	"Content Category"?: NotionSelectProperty;
 	Source?: NotionUrlProperty;
 	Direction?: NotionSelectProperty;
@@ -338,7 +338,7 @@ export function buildCreateContentItemRequest(
 	};
 
 	if (params.pipelineStatus) {
-		properties["Pipeline Status"] = { status: { name: params.pipelineStatus } };
+		properties["Status"] = { status: { name: params.pipelineStatus } };
 	}
 
 	if (params.category) {
@@ -503,7 +503,7 @@ export async function queryContentPipeline(
 
 	if (filter?.pipelineStatus) {
 		filterConditions.push({
-			property: "Pipeline Status",
+			property: "Status",
 			status: { equals: filter.pipelineStatus },
 		});
 	}
