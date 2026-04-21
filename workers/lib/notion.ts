@@ -15,7 +15,7 @@
  * Content Pipeline Database Schema:
  *   Title            — title    (required)
  *   Status  — status   (Idea, Direction, Outline, Script, Review, Ready, Recording, Published)
- *   Content Category — select   (YouTube, Blog Post, Twitter, LinkedIn, YouTube Short)
+ *   Category         — select   (YouTube, Blog Post, Twitter, LinkedIn, YouTube Short)
  *   Source           — url
  *   Direction        — select   (Tutorial, Opinion, Comparison, Walkthrough, Explainer)
  *   Target Audience  — select   (Beginner, Intermediate, Advanced)
@@ -140,7 +140,7 @@ export interface NotionStatusProperty {
 export interface ContentPipelineProperties {
 	Title: NotionTitleProperty;
 	"Status"?: NotionStatusProperty;
-	"Content Category"?: NotionSelectProperty;
+	Category?: NotionSelectProperty;
 	Source?: NotionUrlProperty;
 	Direction?: NotionSelectProperty;
 	"Target Audience"?: NotionSelectProperty;
@@ -342,7 +342,7 @@ export function buildCreateContentItemRequest(
 	}
 
 	if (params.category) {
-		properties["Content Category"] = { select: { name: params.category } };
+		properties.Category = { select: { name: params.category } };
 	}
 
 	if (params.source) {
@@ -510,7 +510,7 @@ export async function queryContentPipeline(
 
 	if (filter?.category) {
 		filterConditions.push({
-			property: "Content Category",
+			property: "Category",
 			select: { equals: filter.category },
 		});
 	}
