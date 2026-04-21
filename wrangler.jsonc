@@ -15,7 +15,7 @@
 		// The worker now fails closed outside local development if Access is not configured.
 		"DOMAINS": "jamesqquick.com",
 		"EMAIL_ADDRESSES": [],
-		"NOTION_DATABASE_ID": "4f61a9b1-4920-49ed-b960-004e3577ad3d"
+		"NOTION_DATABASE_ID": "88f0a333-c77c-43ed-9757-4129f3311dcf"
 	},
 	"send_email": [
 		{
