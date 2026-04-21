@@ -10,7 +10,7 @@
  *   Assign           — person   (user IDs)
  *   Parent item      — relation (self-relation)
  *   Sub-item         — relation (auto-populated)
- *   Content Item     — relation (→ Content Pipeline, two-way)
+ *   Content Pipeline — relation (→ Content Pipeline, two-way)
  *
  * Content Pipeline Database Schema:
  *   Title            — title    (required)
@@ -283,7 +283,7 @@ export async function createNotionTodo(
 
 	// Add Content Item relation if provided
 	if (params.contentItemId) {
-		(body.properties as NotionTodoProperties & { "Content Item"?: NotionRelationProperty })["Content Item"] = {
+		(body.properties as NotionTodoProperties & { "Content Pipeline"?: NotionRelationProperty })["Content Pipeline"] = {
 			relation: [{ id: params.contentItemId }],
 		};
 	}
