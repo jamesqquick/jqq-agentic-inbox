@@ -1,6 +1,6 @@
 import type { ActionContext } from "../types";
 import type { NotionContentCategory } from "../../notion";
-import { createNotionTodo } from "../../notion";
+import { createNotionTodo, createContentItem } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
@@ -76,12 +76,13 @@ export interface ContentIdeaOptions {
 }
 
 /**
- * Shared handler for content idea actions ([IDEA], [TWITTER], etc.).
+ * Shared handler for content idea actions ([IDEA], [VIDEO], [BLOG], [TWITTER], etc.).
  *
  * 1. Extracts links from the email subject + body
  * 2. Uses Workers AI to generate a concise title and description
- * 3. Creates a Notion To-Do page with status "Idea", optional category, and reference links
- * 4. Sends a confirmation reply email with the Notion page link
+ * 3. Creates a Content Pipeline item in Notion (status "Idea") with reference links
+ * 4. Creates a linked To-Do item ("Decide direction: {title}") for visibility in the todo list
+ * 5. Sends a confirmation reply email with links to both Notion pages
  */
 export async function handleContentIdea(
 	ctx: ActionContext,
@@ -93,9 +94,15 @@ export async function handleContentIdea(
 		return;
 	}
 
-	const notionDatabaseId = ctx.env.NOTION_DATABASE_ID;
-	if (!notionDatabaseId) {
+	const todoDatabaseId = ctx.env.NOTION_DATABASE_ID;
+	if (!todoDatabaseId) {
 		console.error(`[${ctx.tag}] NOTION_DATABASE_ID is not configured, skipping`);
+		return;
+	}
+
+	const pipelineDatabaseId = ctx.env.CONTENT_PIPELINE_DB_ID;
+	if (!pipelineDatabaseId) {
+		console.error(`[${ctx.tag}] CONTENT_PIPELINE_DB_ID is not configured, skipping`);
 		return;
 	}
 
@@ -121,24 +128,45 @@ export async function handleContentIdea(
 		options.promptHint,
 	);
 
-	// Create the Notion To-Do item
-	let result;
+	// Step 1: Create the Content Pipeline item
+	let contentItem;
 	try {
-		result = await createNotionTodo(notionApiKey, notionDatabaseId, {
-			name: ideaTitle,
-			status: "Idea",
+		contentItem = await createContentItem(notionApiKey, pipelineDatabaseId, {
+			title: ideaTitle,
+			pipelineStatus: "Idea",
 			category: options.category,
+			source: links[0] || undefined,
 			bodyText: ideaDescription || undefined,
 			links: links.length > 0 ? links : undefined,
+			inputEmails: ctx.emailId,
 		});
 	} catch (e) {
-		console.error(`[${ctx.tag}] Failed to create Notion page:`, (e as Error).message);
+		console.error(`[${ctx.tag}] Failed to create Content Pipeline item:`, (e as Error).message);
 		return;
 	}
 
-	console.log(`[${ctx.tag}] Created Notion page: ${result.id} — ${result.url}`);
+	console.log(`[${ctx.tag}] Created Content Pipeline item: ${contentItem.id} — ${contentItem.url}`);
 
-	// Send a confirmation reply email
+	// Step 2: Create a linked To-Do item for the todo list view
+	let todoItem;
+	try {
+		todoItem = await createNotionTodo(notionApiKey, todoDatabaseId, {
+			name: `Decide direction: ${ideaTitle}`,
+			status: "Next Up",
+			category: options.category,
+			bodyText: ideaDescription || undefined,
+			contentItemId: contentItem.id,
+		});
+	} catch (e) {
+		// Non-fatal: the content pipeline item was created, todo is a nice-to-have
+		console.error(`[${ctx.tag}] Failed to create linked To-Do item:`, (e as Error).message);
+	}
+
+	if (todoItem) {
+		console.log(`[${ctx.tag}] Created linked To-Do item: ${todoItem.id} — ${todoItem.url}`);
+	}
+
+	// Step 3: Send a confirmation reply email
 	const fromDomain = ctx.mailboxId.split("@")[1];
 	if (!fromDomain) {
 		console.error(`[${ctx.tag}] Invalid mailbox address: ${ctx.mailboxId}`);
@@ -148,15 +176,25 @@ export async function handleContentIdea(
 	const replySubject = `Saved: ${ideaTitle}`;
 	const escapedTitle = escapeHtml(ideaTitle);
 	const escapedDescription = escapeHtml(ideaDescription);
-	const escapedUrl = escapeHtml(result.url);
+	const escapedContentUrl = escapeHtml(contentItem.url);
+	const escapedTodoUrl = todoItem ? escapeHtml(todoItem.url) : "";
 	const categoryLabel = options.category ? ` (${options.category})` : "";
 
-	const textBody = `Saved to Notion${categoryLabel}: "${ideaTitle}"\n\n${ideaDescription}\n\nView it here: ${result.url}`;
+	const textBody = [
+		`Saved to Content Pipeline${categoryLabel}: "${ideaTitle}"`,
+		"",
+		ideaDescription,
+		"",
+		`Content Pipeline: ${contentItem.url}`,
+		todoItem ? `To-Do Item: ${todoItem.url}` : "",
+	].filter(Boolean).join("\n");
+
 	const htmlBody = `
 		<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px;">
-			<p>Saved to Notion${escapeHtml(categoryLabel)}: <strong>${escapedTitle}</strong></p>
+			<p>Saved to Content Pipeline${escapeHtml(categoryLabel)}: <strong>${escapedTitle}</strong></p>
 			${escapedDescription ? `<p style="color: #555;">${escapedDescription}</p>` : ""}
-			<p><a href="${escapedUrl}">View in Notion</a></p>
+			<p><a href="${escapedContentUrl}">View in Content Pipeline</a></p>
+			${todoItem ? `<p><a href="${escapedTodoUrl}">View To-Do Item</a></p>` : ""}
 		</div>
 	`.trim();
 

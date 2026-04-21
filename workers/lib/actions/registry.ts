@@ -3,6 +3,10 @@ import { handleLog } from "./handlers/log";
 import { handleSummary } from "./handlers/summary";
 import { handleIdea } from "./handlers/idea";
 import { handleTwitter } from "./handlers/twitter";
+import { handleVideo } from "./handlers/video";
+import { handleBlog } from "./handlers/blog";
+import { handleShort } from "./handlers/short";
+import { handleLinkedin } from "./handlers/linkedin";
 
 /**
  * Hardcoded mapping of subject-line tags to action handlers.
@@ -17,6 +21,10 @@ const actionRegistry: Record<string, ActionHandler> = {
 	SUMMARY: handleSummary,
 	IDEA: handleIdea,
 	TWITTER: handleTwitter,
+	VIDEO: handleVideo,
+	BLOG: handleBlog,
+	SHORT: handleShort,
+	LINKEDIN: handleLinkedin,
 };
 
 export function getActionHandler(tag: string): ActionHandler | undefined {
