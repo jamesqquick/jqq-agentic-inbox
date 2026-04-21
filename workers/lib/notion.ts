@@ -34,7 +34,7 @@ export interface NotionDateProperty {
 
 // ── To-Do database specific types ──────────────────────────────────
 
-export const NOTION_TODO_DATABASE_ID = "2b3404eb-af40-4869-955a-da33f177d5e8";
+export const NOTION_TODO_DATABASE_ID = "4f61a9b1-4920-49ed-b960-004e3577ad3d";
 
 export type NotionTodoStatus =
 	| "Next Up"
