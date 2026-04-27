@@ -364,6 +364,9 @@ async function notionRequest(
 	url: string,
 	body?: any,
 ): Promise<any> {
+	const endpoint = url.replace("https://api.notion.com", "");
+	console.log(`[Notion] ${method} ${endpoint}${body ? ` — payload keys: ${Object.keys(body).join(", ")}` : ""}`);
+
 	const response = await fetch(url, {
 		method,
 		headers: {
@@ -376,9 +379,11 @@ async function notionRequest(
 
 	if (!response.ok) {
 		const errorBody = await response.text();
+		console.error(`[Notion] ${method} ${endpoint} failed — ${response.status}: ${errorBody}`);
 		throw new Error(`Notion API error ${response.status}: ${errorBody}`);
 	}
 
+	console.log(`[Notion] ${method} ${endpoint} — ${response.status} OK`);
 	return response.json();
 }
 

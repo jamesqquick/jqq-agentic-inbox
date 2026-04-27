@@ -34,6 +34,7 @@ export async function storeAttachments(
 ): Promise<StoredAttachment[]> {
 	if (!attachments?.length) return [];
 
+	console.log(`[Attachments] Storing ${attachments.length} attachment(s) for emailId: ${emailId}`);
 	const results: StoredAttachment[] = [];
 	for (const att of attachments) {
 		const attachmentId = crypto.randomUUID();
@@ -53,5 +54,7 @@ export async function storeAttachments(
 			disposition: att.disposition,
 		});
 	}
+	const totalBytes = results.reduce((sum, a) => sum + a.size, 0);
+	console.log(`[Attachments] Stored ${results.length} attachment(s) for emailId: ${emailId} — total: ${totalBytes} bytes`);
 	return results;
 }

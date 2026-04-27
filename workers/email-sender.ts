@@ -67,6 +67,11 @@ export async function sendEmail(
 		}));
 	}
 
+	const toStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+	const fromStr = typeof params.from === "string" ? params.from : params.from.email;
+	console.log(`[EmailSender] Sending — from: ${fromStr}, to: ${toStr}, subject: "${params.subject}"`);
+
 	const result = await binding.send(message as any);
+	console.log(`[EmailSender] Sent — messageId: ${result.messageId}`);
 	return { messageId: result.messageId };
 }

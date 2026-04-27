@@ -138,17 +138,21 @@ export async function handleContentIdea(
 		aiBodyInput,
 		options.promptHint,
 	);
+	console.log(`[${ctx.tag}] AI generated — title: "${ideaTitle}", description: ${ideaDescription ? `${ideaDescription.length} chars` : "none"}`);
 
 	// Create the parent Content item
+	const notionParams = {
+		title: ideaTitle,
+		status: "Idea" as const,
+		categories: options.category ? [options.category] : undefined,
+		bodyText: ideaDescription || undefined,
+		links: links.length > 0 ? links : undefined,
+	};
+	console.log(`[${ctx.tag}] Creating Notion item — title: "${notionParams.title}", status: "${notionParams.status}", categories: ${JSON.stringify(notionParams.categories ?? [])}, links: ${notionParams.links?.length ?? 0}, bodyText: ${notionParams.bodyText ? `${notionParams.bodyText.length} chars` : "none"}`);
+
 	let contentItem;
 	try {
-		contentItem = await createContentItem(notionApiKey, contentDatabaseId, {
-			title: ideaTitle,
-			status: "Idea",
-			categories: options.category ? [options.category] : undefined,
-			bodyText: ideaDescription || undefined,
-			links: links.length > 0 ? links : undefined,
-		});
+		contentItem = await createContentItem(notionApiKey, contentDatabaseId, notionParams);
 	} catch (e) {
 		console.error(`[${ctx.tag}] Failed to create Content item:`, (e as Error).message);
 		return;
