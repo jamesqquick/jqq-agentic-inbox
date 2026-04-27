@@ -34,7 +34,7 @@ export async function routeEmailAction(params: {
 		return;
 	}
 
-	console.log(`[Actions] Dispatching [${params.tag}] action for email ${params.emailId}`);
+	console.log(`[Actions] Dispatching [${params.tag}] action for email ${params.emailId} (sender: ${params.sender}, subject: "${params.cleanSubject}")`);
 
 	await handler({
 		emailId: params.emailId,
@@ -46,4 +46,6 @@ export async function routeEmailAction(params: {
 		mailboxId: params.mailboxId,
 		env: params.env,
 	});
+
+	console.log(`[Actions] [${params.tag}] action completed for email ${params.emailId}`);
 }

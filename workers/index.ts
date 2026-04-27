@@ -347,8 +347,11 @@ async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 }
 
 async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+	console.log(`[Email] Incoming email — rawSize: ${event.rawSize} bytes`);
 	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
+
+	console.log(`[Email] Parsed — from: ${parsedEmail.from?.address}, to: ${parsedEmail.to?.map((t) => t.address).join(", ")}, subject: "${parsedEmail.subject}", attachments: ${parsedEmail.attachments?.length ?? 0}`);
 
 	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");
 
@@ -365,7 +368,8 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	if (!mailboxId) throw new Error("received email with no valid recipient address");
 
 	const messageId = crypto.randomUUID();
-	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
+	console.log(`[Email] Resolved mailboxId: ${mailboxId}, assigned emailId: ${messageId}`);
+	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`[Email] Ignoring email for ${mailboxId}: mailbox does not exist in R2`); return; }
 
 	const stub = env.MAILBOX.get(env.MAILBOX.idFromName(mailboxId));
 
@@ -379,6 +383,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 				size: typeof att.content === "string" ? att.content.length : att.content.byteLength,
 				content_id: att.contentId || null, disposition: att.disposition || "attachment" });
 		}
+		console.log(`[Email] Stored ${attachmentData.length} attachment(s) to R2 for emailId: ${messageId}`);
 	}
 
 	const extractMsgId = (s: string) => { const m = s.match(/<([^>]+)>/); return m ? m[1] : s.trim().split(/\s+/)[0]; };
@@ -386,10 +391,12 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	const emailReferences = parsedEmail.references ? parsedEmail.references.split(/\s+/).filter(Boolean).map(extractMsgId) : [];
 	let threadId = emailReferences[0] || inReplyTo || messageId;
 
+	const threadSource = emailReferences.length > 0 ? "references" : inReplyTo ? "in-reply-to" : "new";
 	if (!inReplyTo && emailReferences.length === 0) {
 		const subjectThread = await (stub as any).findThreadBySubject(parsedEmail.subject || "", parsedEmail.from?.address || undefined);
-		if (subjectThread) threadId = subjectThread;
+		if (subjectThread) { threadId = subjectThread; }
 	}
+	console.log(`[Email] Thread resolution: threadId=${threadId}, source=${threadSource === "new" && threadId !== messageId ? "subject-match" : threadSource}`);
 
 	const originalMessageId = parsedEmail.messageId ? extractMsgId(parsedEmail.messageId) : null;
 
@@ -402,6 +409,8 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		in_reply_to: inReplyTo, email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
+
+	console.log(`[Email] Stored email ${messageId} in INBOX for mailbox ${mailboxId}`);
 
 	// Check for a [TAG] prefix in the subject to route to a custom action.
 	// Tagged emails run their action handler and skip the auto-draft agent.
@@ -423,6 +432,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 			}).catch((e) => console.error("Action routing failed:", (e as Error).message, (e as Error).stack)),
 		);
 	} else {
+		console.log(`[Email] No tag found, routing to auto-draft agent for mailbox ${mailboxId} (emailId: ${messageId})`);
 		const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
 		ctx.waitUntil(
 			agentStub.fetch(new Request("https://agents/onNewEmail", {
