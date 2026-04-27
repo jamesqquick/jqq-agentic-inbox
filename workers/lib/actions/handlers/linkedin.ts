@@ -4,7 +4,9 @@ import { handleContentIdea } from "./content-idea";
 /**
  * [LINKEDIN] action handler.
  *
- * Saves a LinkedIn content idea to Notion with Content Category "LinkedIn".
+ * Saves a content idea to the Notion Content database with Category "LinkedIn"
+ * as an initial format hint. A single parent Content item is created at
+ * Status = "Idea"; output-specific sub-pages are produced later in the pipeline.
  *
  * Usage: Send an email with subject "[LINKEDIN] Post about our new AI workflow"
  */

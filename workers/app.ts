@@ -8,6 +8,7 @@ import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
+import { runMorningDigest } from "./lib/morning-digest";
 import type { Env } from "./types";
 
 export { MailboxDO } from "./durableObject";
@@ -123,5 +124,12 @@ export default {
 			// Swallowing the error would silently drop the email.
 			throw e;
 		}
+	},
+	async scheduled(
+		_controller: ScheduledController,
+		env: Env,
+		ctx: ExecutionContext,
+	) {
+		ctx.waitUntil(runMorningDigest(env));
 	},
 };

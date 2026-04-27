@@ -4,7 +4,9 @@ import { handleContentIdea } from "./content-idea";
 /**
  * [SHORT] action handler.
  *
- * Saves a YouTube Short / Reels / TikTok content idea to Notion with Content Category "YouTube Short".
+ * Saves a content idea to the Notion Content database with Category "YouTube Short"
+ * as an initial format hint. A single parent Content item is created at
+ * Status = "Idea"; output-specific sub-pages are produced later in the pipeline.
  *
  * Usage: Send an email with subject "[SHORT] Quick tip about TypeScript generics"
  */

@@ -1,31 +1,22 @@
 /**
- * Notion API types and helpers for the To-Do and Content Pipeline database integrations.
+ * Notion API types and helpers for the Content database integration.
  *
- * To-Do Database Schema:
- *   Name             — title    (required)
- *   Status           — select   (Next Up, In Progress, Completed, Ongoing, Archived, Idea)
- *   Priority         — select   (High 🔥, Medium, Low)
- *   Content Category — select   (Blog Post, LinkedIn, YouTube Short, YouTube, Twitter)
- *   Due Date         — date     (ISO-8601)
- *   Assign           — person   (user IDs)
- *   Parent item      — relation (self-relation)
- *   Sub-item         — relation (auto-populated)
- *   Content Pipeline — relation (→ Content Pipeline, two-way)
- *
- * Content Pipeline Database Schema:
- *   Title            — title    (required)
- *   Status  — status   (Idea, Direction, Outline, Script, Review, Ready, Recording, Published)
- *   Category         — select   (YouTube, Blog Post, Twitter, LinkedIn, YouTube Short)
- *   Source           — url
- *   Direction        — select   (Tutorial, Opinion, Comparison, Walkthrough, Explainer)
- *   Target Audience  — select   (Beginner, Intermediate, Advanced)
+ * Content Database Schema (live):
+ *   Title            — title       (required)
+ *   Status           — status      (Idea, In progress, Drafting, Outlining, Published)
+ *   Category         — multi_select (Demo, YouTube, Blog Post, Twitter, LinkedIn, YouTube Short)
+ *   Direction        — select      (Tutorial, Opinion, Comparison, Walkthrough, Explainer)
+ *   Target Audience  — select      (Beginner, Intermediate, Advanced)
  *   Hook             — rich_text
- *   Priority         — select   (High, Medium, Low)
+ *   Priority         — select      (High, Medium, Low)
  *   Target Date      — date
- *   Todo Item        — relation (→ To-Do Items, two-way)
- *   Input Emails     — rich_text
  *
- *   Long-form artifacts (outline, script, blog, transcript, etc.) are stored as child pages.
+ *   Any links from the inbound email are added to a References section in the
+ *   page body rather than a dedicated property.
+ *
+ *   Output-specific artifacts (video script, blog draft, tweet copy, etc.) are
+ *   created as child pages under a given Content item. Ingestion only creates
+ *   the parent item; child pages are produced later in the pipeline.
  */
 
 // ── Notion property value types ────────────────────────────────────
@@ -43,35 +34,63 @@ export interface NotionSelectProperty {
 	select: { name: string };
 }
 
+export interface NotionMultiSelectProperty {
+	multi_select: { name: string }[];
+}
+
 export interface NotionDateProperty {
 	date: { start: string; end?: string | null };
 }
 
-// ── To-Do database specific types ──────────────────────────────────
+export interface NotionStatusProperty {
+	status: { name: string };
+}
 
-export type NotionTodoStatus =
-	| "Next Up"
-	| "In Progress"
-	| "Completed"
-	| "Ongoing"
-	| "Archived"
-	| "Idea";
+export interface NotionUrlProperty {
+	url: string;
+}
 
-export type NotionTodoPriority = "High 🔥" | "Medium" | "Low";
+export interface NotionRichTextProperty {
+	rich_text: NotionRichText[];
+}
 
-export type NotionContentCategory =
-	| "Blog Post"
-	| "LinkedIn"
-	| "YouTube Short"
+// ── Content database specific types ───────────────────────────────
+
+export type ContentStatus =
+	| "Idea"
+	| "In progress"
+	| "Drafting"
+	| "Outlining"
+	| "Published";
+
+export type ContentCategory =
+	| "Demo"
 	| "YouTube"
-	| "Twitter";
+	| "Blog Post"
+	| "Twitter"
+	| "LinkedIn"
+	| "YouTube Short";
 
-export interface NotionTodoProperties {
-	Name: NotionTitleProperty;
-	Status?: NotionSelectProperty;
+export type ContentDirection =
+	| "Tutorial"
+	| "Opinion"
+	| "Comparison"
+	| "Walkthrough"
+	| "Explainer";
+
+export type ContentAudience = "Beginner" | "Intermediate" | "Advanced";
+
+export type ContentPriority = "High" | "Medium" | "Low";
+
+export interface ContentProperties {
+	Title: NotionTitleProperty;
+	Status?: NotionStatusProperty;
+	Category?: NotionMultiSelectProperty;
+	Direction?: NotionSelectProperty;
+	"Target Audience"?: NotionSelectProperty;
+	Hook?: NotionRichTextProperty;
 	Priority?: NotionSelectProperty;
-	"Content Category"?: NotionSelectProperty;
-	"Due Date"?: NotionDateProperty;
+	"Target Date"?: NotionDateProperty;
 }
 
 /** Block content types for the page body. */
@@ -95,67 +114,11 @@ export interface NotionBulletedListBlock {
 
 export type NotionBlock = NotionParagraphBlock | NotionHeadingBlock | NotionBulletedListBlock;
 
-// ── Content Pipeline database specific types ──────────────────────
-
-export type PipelineStatus =
-	| "Idea"
-	| "Direction"
-	| "Outline"
-	| "Script"
-	| "Review"
-	| "Ready"
-	| "Recording"
-	| "Published";
-
-export type ContentDirection =
-	| "Tutorial"
-	| "Opinion"
-	| "Comparison"
-	| "Walkthrough"
-	| "Explainer";
-
-export type ContentAudience =
-	| "Beginner"
-	| "Intermediate"
-	| "Advanced";
-
-export type ContentPriority = "High" | "Medium" | "Low";
-
-export interface NotionUrlProperty {
-	url: string;
-}
-
-export interface NotionRichTextProperty {
-	rich_text: NotionRichText[];
-}
-
-export interface NotionRelationProperty {
-	relation: { id: string }[];
-}
-
-export interface NotionStatusProperty {
-	status: { name: string };
-}
-
-export interface ContentPipelineProperties {
-	Title: NotionTitleProperty;
-	"Status"?: NotionStatusProperty;
-	Category?: NotionSelectProperty;
-	Source?: NotionUrlProperty;
-	Direction?: NotionSelectProperty;
-	"Target Audience"?: NotionSelectProperty;
-	Hook?: NotionRichTextProperty;
-	Priority?: NotionSelectProperty;
-	"Target Date"?: NotionDateProperty;
-	"Todo Item"?: NotionRelationProperty;
-	"Input Emails"?: NotionRichTextProperty;
-}
-
 // ── API request / response types ───────────────────────────────────
 
 export interface NotionCreatePageRequest {
 	parent: { database_id: string } | { page_id: string };
-	properties: NotionTodoProperties | ContentPipelineProperties | { title: NotionRichText[] };
+	properties: ContentProperties | { title: NotionRichText[] };
 	children?: NotionBlock[];
 }
 
@@ -166,7 +129,7 @@ export interface NotionCreatePageResponse {
 }
 
 export interface NotionUpdatePageRequest {
-	properties: Partial<ContentPipelineProperties> | Partial<NotionTodoProperties>;
+	properties: Partial<ContentProperties>;
 }
 
 export interface NotionQueryResponse {
@@ -179,40 +142,62 @@ export interface NotionQueryResponse {
 	next_cursor: string | null;
 }
 
-// ── Helper to build a create-page request ──────────────────────────
+// ── Content helpers ───────────────────────────────────────────────
 
-export function buildCreateTodoRequest(
+/**
+ * Build a create-page request for the Content database.
+ */
+export function buildCreateContentItemRequest(
 	databaseId: string,
 	params: {
-		name: string;
-		status?: NotionTodoStatus;
-		priority?: NotionTodoPriority;
-		category?: NotionContentCategory;
-		dueDate?: string;
+		title: string;
+		status?: ContentStatus;
+		categories?: ContentCategory[];
+		direction?: ContentDirection;
+		audience?: ContentAudience;
+		hook?: string;
+		priority?: ContentPriority;
+		targetDate?: string;
 		bodyText?: string;
 		links?: string[];
 	},
 ): NotionCreatePageRequest {
-	const properties: NotionTodoProperties = {
-		Name: {
-			title: [{ type: "text", text: { content: params.name } }],
+	const properties: ContentProperties = {
+		Title: {
+			title: [{ type: "text", text: { content: params.title } }],
 		},
 	};
 
 	if (params.status) {
-		properties.Status = { select: { name: params.status } };
+		properties.Status = { status: { name: params.status } };
+	}
+
+	if (params.categories && params.categories.length > 0) {
+		properties.Category = {
+			multi_select: params.categories.map((name) => ({ name })),
+		};
+	}
+
+	if (params.direction) {
+		properties.Direction = { select: { name: params.direction } };
+	}
+
+	if (params.audience) {
+		properties["Target Audience"] = { select: { name: params.audience } };
+	}
+
+	if (params.hook) {
+		properties.Hook = {
+			rich_text: [{ type: "text", text: { content: params.hook } }],
+		};
 	}
 
 	if (params.priority) {
 		properties.Priority = { select: { name: params.priority } };
 	}
 
-	if (params.category) {
-		properties["Content Category"] = { select: { name: params.category } };
-	}
-
-	if (params.dueDate) {
-		properties["Due Date"] = { date: { start: params.dueDate } };
+	if (params.targetDate) {
+		properties["Target Date"] = { date: { start: params.targetDate } };
 	}
 
 	const children: NotionBlock[] = [];
@@ -261,175 +246,12 @@ export function buildCreateTodoRequest(
 	};
 }
 
-// ── API call ───────────────────────────────────────────────────────
+// ── API calls ──────────────────────────────────────────────────────
 
 const NOTION_API_VERSION = "2022-06-28";
 
-export async function createNotionTodo(
-	apiKey: string,
-	databaseId: string,
-	params: {
-		name: string;
-		status?: NotionTodoStatus;
-		priority?: NotionTodoPriority;
-		category?: NotionContentCategory;
-		dueDate?: string;
-		bodyText?: string;
-		links?: string[];
-		contentItemId?: string;
-	},
-): Promise<NotionCreatePageResponse> {
-	const body = buildCreateTodoRequest(databaseId, params);
-
-	// Add Content Item relation if provided
-	if (params.contentItemId) {
-		(body.properties as NotionTodoProperties & { "Content Pipeline"?: NotionRelationProperty })["Content Pipeline"] = {
-			relation: [{ id: params.contentItemId }],
-		};
-	}
-
-	const response = await fetch("https://api.notion.com/v1/pages", {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			"Notion-Version": NOTION_API_VERSION,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(body),
-	});
-
-	if (!response.ok) {
-		const errorBody = await response.text();
-		throw new Error(
-			`Notion API error ${response.status}: ${errorBody}`,
-		);
-	}
-
-	return response.json() as Promise<NotionCreatePageResponse>;
-}
-
-// ── Content Pipeline helpers ──────────────────────────────────────
-
 /**
- * Build a create-page request for the Content Pipeline database.
- */
-export function buildCreateContentItemRequest(
-	databaseId: string,
-	params: {
-		title: string;
-		pipelineStatus?: PipelineStatus;
-		category?: NotionContentCategory;
-		source?: string;
-		direction?: ContentDirection;
-		audience?: ContentAudience;
-		hook?: string;
-		priority?: ContentPriority;
-		targetDate?: string;
-		todoItemId?: string;
-		inputEmails?: string;
-		bodyText?: string;
-		links?: string[];
-	},
-): NotionCreatePageRequest {
-	const properties: ContentPipelineProperties = {
-		Title: {
-			title: [{ type: "text", text: { content: params.title } }],
-		},
-	};
-
-	if (params.pipelineStatus) {
-		properties["Status"] = { status: { name: params.pipelineStatus } };
-	}
-
-	if (params.category) {
-		properties.Category = { select: { name: params.category } };
-	}
-
-	if (params.source) {
-		properties.Source = { url: params.source };
-	}
-
-	if (params.direction) {
-		properties.Direction = { select: { name: params.direction } };
-	}
-
-	if (params.audience) {
-		properties["Target Audience"] = { select: { name: params.audience } };
-	}
-
-	if (params.hook) {
-		properties.Hook = {
-			rich_text: [{ type: "text", text: { content: params.hook } }],
-		};
-	}
-
-	if (params.priority) {
-		properties.Priority = { select: { name: params.priority } };
-	}
-
-	if (params.targetDate) {
-		properties["Target Date"] = { date: { start: params.targetDate } };
-	}
-
-	if (params.todoItemId) {
-		properties["Todo Item"] = {
-			relation: [{ id: params.todoItemId }],
-		};
-	}
-
-	if (params.inputEmails) {
-		properties["Input Emails"] = {
-			rich_text: [{ type: "text", text: { content: params.inputEmails } }],
-		};
-	}
-
-	const children: NotionBlock[] = [];
-
-	if (params.bodyText?.trim()) {
-		children.push({
-			object: "block",
-			type: "paragraph",
-			paragraph: {
-				rich_text: [{ type: "text", text: { content: params.bodyText } }],
-			},
-		});
-	}
-
-	if (params.links && params.links.length > 0) {
-		children.push({
-			object: "block",
-			type: "paragraph",
-			paragraph: { rich_text: [] },
-		});
-
-		children.push({
-			object: "block",
-			type: "heading_2",
-			heading_2: {
-				rich_text: [{ type: "text", text: { content: "References" } }],
-			},
-		});
-
-		for (const link of params.links) {
-			children.push({
-				object: "block",
-				type: "bulleted_list_item",
-				bulleted_list_item: {
-					rich_text: [{ type: "text", text: { content: link, link: { url: link } } }],
-				},
-			});
-		}
-	}
-
-	return {
-		parent: { database_id: databaseId },
-		properties,
-		children: children.length > 0 ? children : undefined,
-	};
-}
-
-/**
- * Create a new Content Pipeline item in Notion.
+ * Create a new Content item in Notion.
  */
 export async function createContentItem(
 	apiKey: string,
@@ -437,13 +259,12 @@ export async function createContentItem(
 	params: Parameters<typeof buildCreateContentItemRequest>[1],
 ): Promise<NotionCreatePageResponse> {
 	const body = buildCreateContentItemRequest(databaseId, params);
-
 	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
 	return response as NotionCreatePageResponse;
 }
 
 /**
- * Update properties on an existing Notion page (works for both To-Do and Content Pipeline items).
+ * Update properties on an existing Content item.
  */
 export async function updateNotionPage(
 	apiKey: string,
@@ -457,7 +278,8 @@ export async function updateNotionPage(
 }
 
 /**
- * Create a child page under an existing page (used for storing long-form artifacts like scripts, outlines, etc.).
+ * Create a child page under an existing Content item. Used later in the
+ * pipeline to store output-specific artifacts (video script, blog draft, etc.).
  */
 export async function createChildPage(
 	apiKey: string,
@@ -489,29 +311,29 @@ export async function createChildPage(
 }
 
 /**
- * Query the Content Pipeline database with optional filters.
+ * Query the Content database with optional filters.
  */
 export async function queryContentPipeline(
 	apiKey: string,
 	databaseId: string,
 	filter?: {
-		pipelineStatus?: PipelineStatus;
-		category?: NotionContentCategory;
+		status?: ContentStatus;
+		category?: ContentCategory;
 	},
 ): Promise<NotionQueryResponse> {
 	const filterConditions: any[] = [];
 
-	if (filter?.pipelineStatus) {
+	if (filter?.status) {
 		filterConditions.push({
 			property: "Status",
-			status: { equals: filter.pipelineStatus },
+			status: { equals: filter.status },
 		});
 	}
 
 	if (filter?.category) {
 		filterConditions.push({
 			property: "Category",
-			select: { equals: filter.category },
+			multi_select: { contains: filter.category },
 		});
 	}
 

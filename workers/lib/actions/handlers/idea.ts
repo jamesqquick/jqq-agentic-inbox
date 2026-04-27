@@ -4,7 +4,9 @@ import { handleContentIdea } from "./content-idea";
 /**
  * [IDEA] action handler.
  *
- * Saves a general idea to Notion with no content category.
+ * Saves a general idea to the Notion Content database with no category. A
+ * single parent Content item is created at Status = "Idea"; format and
+ * output-specific sub-pages are decided later in the pipeline.
  *
  * Usage: Send an email with subject "[IDEA] Your idea here"
  */

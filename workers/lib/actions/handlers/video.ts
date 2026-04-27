@@ -4,7 +4,9 @@ import { handleContentIdea } from "./content-idea";
 /**
  * [VIDEO] action handler.
  *
- * Saves a YouTube video content idea to Notion with Content Category "YouTube".
+ * Saves a content idea to the Notion Content database with Category "YouTube"
+ * as an initial format hint. A single parent Content item is created at
+ * Status = "Idea"; output-specific sub-pages are produced later in the pipeline.
  *
  * Usage: Send an email with subject "[VIDEO] Cool video idea about edge computing"
  */

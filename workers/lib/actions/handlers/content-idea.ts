@@ -1,6 +1,6 @@
 import type { ActionContext } from "../types";
-import type { NotionContentCategory } from "../../notion";
-import { createNotionTodo, createContentItem } from "../../notion";
+import type { ContentCategory } from "../../notion";
+import { createContentItem } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
@@ -73,8 +73,11 @@ Respond in JSON format only, no other text: {"title": "...", "description": "...
 }
 
 export interface ContentIdeaOptions {
-	/** Notion Content Category value (e.g. "Twitter", "Blog Post"). Omit for uncategorized ideas. */
-	category?: NotionContentCategory;
+	/**
+	 * Content Category to set on the parent Content item. Written as a
+	 * single-value multi_select entry. Omit for uncategorized ideas (e.g. [IDEA]).
+	 */
+	category?: ContentCategory;
 	/** Context hint for the AI prompt (e.g. "content the user wants to share on Twitter"). */
 	promptHint: string;
 }
@@ -84,9 +87,12 @@ export interface ContentIdeaOptions {
  *
  * 1. Extracts links from the email subject + body
  * 2. Uses Workers AI to generate a concise title and description
- * 3. Creates a Content Pipeline item in Notion (status "Idea") with reference links
- * 4. Creates a linked To-Do item ("Decide direction: {title}") for visibility in the todo list
- * 5. Sends a confirmation reply email with links to both Notion pages
+ * 3. Creates a single parent Content item in Notion (Status = "Idea")
+ * 4. Sends a confirmation reply email linking to the Notion page
+ *
+ * Output-specific sub-pages (video script, blog draft, etc.) are NOT created
+ * during ingestion. They are produced later in the pipeline once direction is
+ * decided.
  */
 export async function handleContentIdea(
 	ctx: ActionContext,
@@ -98,14 +104,8 @@ export async function handleContentIdea(
 		return;
 	}
 
-	const todoDatabaseId = ctx.env.NOTION_DATABASE_ID;
-	if (!todoDatabaseId) {
-		console.error(`[${ctx.tag}] NOTION_DATABASE_ID is not configured, skipping`);
-		return;
-	}
-
-	const pipelineDatabaseId = ctx.env.CONTENT_PIPELINE_DB_ID;
-	if (!pipelineDatabaseId) {
+	const contentDatabaseId = ctx.env.CONTENT_PIPELINE_DB_ID;
+	if (!contentDatabaseId) {
 		console.error(`[${ctx.tag}] CONTENT_PIPELINE_DB_ID is not configured, skipping`);
 		return;
 	}
@@ -124,7 +124,7 @@ export async function handleContentIdea(
 		console.log(`[${ctx.tag}] Body preview: "${ctx.body.substring(0, 200)}"`);
 	}
 
-	// Extract any URLs from the email
+	// Extract any URLs from the email — these go in the References section of the page body.
 	const links = extractLinks(rawSubject, ctx.body);
 	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${links.length > 0 ? `: ${links.join(", ")}` : ""}`);
 
@@ -139,48 +139,24 @@ export async function handleContentIdea(
 		options.promptHint,
 	);
 
-	// Step 1: Create the Content Pipeline item
-	const sourceUrl = links[0] || undefined;
-	console.log(`[${ctx.tag}] Source URL for Notion: ${sourceUrl ?? "(none)"}`);
-
+	// Create the parent Content item
 	let contentItem;
 	try {
-		contentItem = await createContentItem(notionApiKey, pipelineDatabaseId, {
+		contentItem = await createContentItem(notionApiKey, contentDatabaseId, {
 			title: ideaTitle,
-			pipelineStatus: "Idea",
-			category: options.category,
-			source: sourceUrl,
+			status: "Idea",
+			categories: options.category ? [options.category] : undefined,
 			bodyText: ideaDescription || undefined,
 			links: links.length > 0 ? links : undefined,
-			inputEmails: ctx.emailId,
 		});
 	} catch (e) {
-		console.error(`[${ctx.tag}] Failed to create Content Pipeline item:`, (e as Error).message);
+		console.error(`[${ctx.tag}] Failed to create Content item:`, (e as Error).message);
 		return;
 	}
 
-	console.log(`[${ctx.tag}] Created Content Pipeline item: ${contentItem.id} — ${contentItem.url}`);
+	console.log(`[${ctx.tag}] Created Content item: ${contentItem.id} — ${contentItem.url}`);
 
-	// Step 2: Create a linked To-Do item for the todo list view
-	let todoItem;
-	try {
-		todoItem = await createNotionTodo(notionApiKey, todoDatabaseId, {
-			name: `Decide direction: ${ideaTitle}`,
-			status: "Next Up",
-			category: options.category,
-			bodyText: ideaDescription || undefined,
-			contentItemId: contentItem.id,
-		});
-	} catch (e) {
-		// Non-fatal: the content pipeline item was created, todo is a nice-to-have
-		console.error(`[${ctx.tag}] Failed to create linked To-Do item:`, (e as Error).message);
-	}
-
-	if (todoItem) {
-		console.log(`[${ctx.tag}] Created linked To-Do item: ${todoItem.id} — ${todoItem.url}`);
-	}
-
-	// Step 3: Send a confirmation reply email
+	// Send a confirmation reply email
 	const fromDomain = ctx.mailboxId.split("@")[1];
 	if (!fromDomain) {
 		console.error(`[${ctx.tag}] Invalid mailbox address: ${ctx.mailboxId}`);
@@ -191,24 +167,21 @@ export async function handleContentIdea(
 	const escapedTitle = escapeHtml(ideaTitle);
 	const escapedDescription = escapeHtml(ideaDescription);
 	const escapedContentUrl = escapeHtml(contentItem.url);
-	const escapedTodoUrl = todoItem ? escapeHtml(todoItem.url) : "";
 	const categoryLabel = options.category ? ` (${options.category})` : "";
 
 	const textBody = [
-		`Saved to Content Pipeline${categoryLabel}: "${ideaTitle}"`,
+		`Saved to Content${categoryLabel}: "${ideaTitle}"`,
 		"",
 		ideaDescription,
 		"",
-		`Content Pipeline: ${contentItem.url}`,
-		todoItem ? `To-Do Item: ${todoItem.url}` : "",
+		`Content: ${contentItem.url}`,
 	].filter(Boolean).join("\n");
 
 	const htmlBody = `
 		<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px;">
-			<p>Saved to Content Pipeline${escapeHtml(categoryLabel)}: <strong>${escapedTitle}</strong></p>
+			<p>Saved to Content${escapeHtml(categoryLabel)}: <strong>${escapedTitle}</strong></p>
 			${escapedDescription ? `<p style="color: #555;">${escapedDescription}</p>` : ""}
-			<p><a href="${escapedContentUrl}">View in Content Pipeline</a></p>
-			${todoItem ? `<p><a href="${escapedTodoUrl}">View To-Do Item</a></p>` : ""}
+			<p><a href="${escapedContentUrl}">View in Notion</a></p>
 		</div>
 	`.trim();
 
