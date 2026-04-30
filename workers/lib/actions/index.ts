@@ -1,16 +1,17 @@
 import type { Env } from "../../types";
 import { getActionHandler } from "./registry";
 
-const TAG_REGEX = /^\[([A-Z][A-Z0-9_]*)\]\s*/;
+const TAG_REGEX = /^\[([a-zA-Z][a-zA-Z0-9_]*)\]\s*/;
 
 /**
  * Parse a `[TAG]` prefix from the beginning of an email subject line.
- * Returns the tag and the cleaned subject (tag stripped), or null if no tag found.
+ * Tags are case-insensitive – `[idea]`, `[Idea]`, and `[IDEA]` are all valid.
+ * Returns the tag (normalised to uppercase) and the cleaned subject, or null if no tag found.
  */
 export function parseSubjectTag(subject: string): { tag: string; cleanSubject: string } | null {
 	const match = subject.match(TAG_REGEX);
 	if (!match) return null;
-	return { tag: match[1], cleanSubject: subject.slice(match[0].length) };
+	return { tag: match[1].toUpperCase(), cleanSubject: subject.slice(match[0].length) };
 }
 
 /**
