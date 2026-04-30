@@ -7,6 +7,7 @@ import { handleVideo } from "./handlers/video";
 import { handleBlog } from "./handlers/blog";
 import { handleShort } from "./handlers/short";
 import { handleLinkedin } from "./handlers/linkedin";
+import { handleCfp } from "./handlers/cfp";
 
 /**
  * Hardcoded mapping of subject-line tags to action handlers.
@@ -25,6 +26,7 @@ const actionRegistry: Record<string, ActionHandler> = {
 	BLOG: handleBlog,
 	SHORT: handleShort,
 	LINKEDIN: handleLinkedin,
+	CFP: handleCfp,
 };
 
 export function getActionHandler(tag: string): ActionHandler | undefined {

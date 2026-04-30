@@ -1,5 +1,5 @@
 /**
- * Notion API types and helpers for the Content database integration.
+ * Notion API types and helpers for database integrations.
  *
  * Content Database Schema (live):
  *   Title            — title       (required)
@@ -17,6 +17,15 @@
  *   Output-specific artifacts (video script, blog draft, tweet copy, etc.) are
  *   created as child pages under a given Content item. Ingestion only creates
  *   the parent item; child pages are produced later in the pipeline.
+ *
+ * CFP Database Schema:
+ *   Title            — title       (required)
+ *   Status           — status      (New, Submitted, Accepted, Rejected, Expired)
+ *   Deadline         — date
+ *   URL              — url
+ *   Description      — rich_text
+ *   Content Types    — multi_select (Talk, Workshop, Lightning Talk, Panel, Keynote, Other)
+ *   Notes            — rich_text
  */
 
 // ── Notion property value types ────────────────────────────────────
@@ -82,6 +91,24 @@ export type ContentAudience = "Beginner" | "Intermediate" | "Advanced";
 
 export type ContentPriority = "High" | "Medium" | "Low";
 
+// ── CFP database specific types ──────────────────────────────────
+
+export type CfpStatus = "New" | "Submitted" | "Accepted" | "Rejected" | "Expired";
+
+export type CfpContentType = "Talk" | "Workshop" | "Lightning Talk" | "Panel" | "Keynote" | "Other";
+
+export interface CfpProperties {
+	Title: NotionTitleProperty;
+	Status?: NotionStatusProperty;
+	Deadline?: NotionDateProperty;
+	URL?: NotionUrlProperty;
+	Description?: NotionRichTextProperty;
+	"Content Types"?: NotionMultiSelectProperty;
+	Notes?: NotionRichTextProperty;
+}
+
+// ── Property interfaces ──────────────────────────────────────────
+
 export interface ContentProperties {
 	Title: NotionTitleProperty;
 	Status?: NotionStatusProperty;
@@ -118,7 +145,7 @@ export type NotionBlock = NotionParagraphBlock | NotionHeadingBlock | NotionBull
 
 export interface NotionCreatePageRequest {
 	parent: { database_id: string } | { page_id: string };
-	properties: ContentProperties | { title: NotionRichText[] };
+	properties: ContentProperties | CfpProperties | { title: NotionRichText[] };
 	children?: NotionBlock[];
 }
 
@@ -259,6 +286,78 @@ export async function createContentItem(
 	params: Parameters<typeof buildCreateContentItemRequest>[1],
 ): Promise<NotionCreatePageResponse> {
 	const body = buildCreateContentItemRequest(databaseId, params);
+	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
+	return response as NotionCreatePageResponse;
+}
+
+// ── CFP helpers ──────────────────────────────────────────────────
+
+/**
+ * Build a create-page request for the CFP database.
+ */
+export function buildCreateCfpItemRequest(
+	databaseId: string,
+	params: {
+		title: string;
+		status?: CfpStatus;
+		deadline?: string;
+		url?: string;
+		description?: string;
+		contentTypes?: CfpContentType[];
+		notes?: string;
+	},
+): NotionCreatePageRequest {
+	const properties: CfpProperties = {
+		Title: {
+			title: [{ type: "text", text: { content: params.title } }],
+		},
+	};
+
+	if (params.status) {
+		properties.Status = { status: { name: params.status } };
+	}
+
+	if (params.deadline) {
+		properties.Deadline = { date: { start: params.deadline } };
+	}
+
+	if (params.url) {
+		properties.URL = { url: params.url };
+	}
+
+	if (params.description) {
+		properties.Description = {
+			rich_text: [{ type: "text", text: { content: params.description.slice(0, 2000) } }],
+		};
+	}
+
+	if (params.contentTypes && params.contentTypes.length > 0) {
+		properties["Content Types"] = {
+			multi_select: params.contentTypes.map((name) => ({ name })),
+		};
+	}
+
+	if (params.notes) {
+		properties.Notes = {
+			rich_text: [{ type: "text", text: { content: params.notes.slice(0, 2000) } }],
+		};
+	}
+
+	return {
+		parent: { database_id: databaseId },
+		properties,
+	};
+}
+
+/**
+ * Create a new CFP item in Notion.
+ */
+export async function createCfpItem(
+	apiKey: string,
+	databaseId: string,
+	params: Parameters<typeof buildCreateCfpItemRequest>[1],
+): Promise<NotionCreatePageResponse> {
+	const body = buildCreateCfpItemRequest(databaseId, params);
 	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
 	return response as NotionCreatePageResponse;
 }

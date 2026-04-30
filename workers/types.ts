@@ -7,4 +7,5 @@ export interface Env extends Cloudflare.Env {
 	TEAM_DOMAIN: string;
 	NOTION_API_KEY: string;
 	CONTENT_PIPELINE_DB_ID: string;
+	CFP_DB_ID: string;
 }

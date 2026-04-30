@@ -7,3 +7,6 @@ TEAM_DOMAIN=https://your-team.cloudflareaccess.com
 # and share the To-Do database with it.
 NOTION_API_KEY=secret_xxx
 # NOTION_DATABASE_ID is set in wrangler.jsonc vars, but can be overridden here.
+
+# CFP tracking database ID (required for [CFP] email action).
+# CFP_DB_ID is set in wrangler.jsonc vars, but can be overridden here.

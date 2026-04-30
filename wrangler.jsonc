@@ -15,7 +15,8 @@
 		// The worker now fails closed outside local development if Access is not configured.
 		"DOMAINS": "jamesqquick.com",
 		"EMAIL_ADDRESSES": [],
-		"CONTENT_PIPELINE_DB_ID": "34919d8297318027a6e6eb07cb86dfac"
+		"CONTENT_PIPELINE_DB_ID": "34919d8297318027a6e6eb07cb86dfac",
+		"CFP_DB_ID": ""
 	},
 	"send_email": [
 		{
