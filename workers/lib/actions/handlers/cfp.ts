@@ -154,6 +154,7 @@ Be creative and specific. Avoid generic titles. Each idea should have a distinct
 		});
 
 		const text = typeof response === "string" ? response : (response as { response?: string }).response || "";
+		console.log(`[CFP] Brainstorming raw AI response: "${text.slice(0, 500)}"`);
 		return parseTalkIdeas(text);
 	} catch (e) {
 		console.error("[CFP] Talk idea brainstorming failed:", (e as Error).message);
