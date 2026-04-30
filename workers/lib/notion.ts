@@ -295,6 +295,12 @@ export async function createContentItem(
 /**
  * Build a create-page request for the CFP database.
  */
+export interface CfpTalkIdea {
+	title: string;
+	pitch: string;
+	contentType?: string;
+}
+
 export function buildCreateCfpItemRequest(
 	databaseId: string,
 	params: {
@@ -305,6 +311,7 @@ export function buildCreateCfpItemRequest(
 		description?: string;
 		contentTypes?: CfpContentType[];
 		bodyText?: string;
+		talkIdeas?: CfpTalkIdea[];
 	},
 ): NotionCreatePageRequest {
 	const properties: CfpProperties = {
@@ -347,6 +354,35 @@ export function buildCreateCfpItemRequest(
 				rich_text: [{ type: "text", text: { content: params.bodyText.slice(0, 2000) } }],
 			},
 		});
+	}
+
+	if (params.talkIdeas && params.talkIdeas.length > 0) {
+		// Blank line before the section
+		children.push({
+			object: "block",
+			type: "paragraph",
+			paragraph: { rich_text: [] },
+		});
+
+		children.push({
+			object: "block",
+			type: "heading_2",
+			heading_2: {
+				rich_text: [{ type: "text", text: { content: "Talk Ideas" } }],
+			},
+		});
+
+		for (const idea of params.talkIdeas) {
+			const typeLabel = idea.contentType ? ` (${idea.contentType})` : "";
+			const text = `${idea.title}${typeLabel} — ${idea.pitch}`;
+			children.push({
+				object: "block",
+				type: "bulleted_list_item",
+				bulleted_list_item: {
+					rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }],
+				},
+			});
+		}
 	}
 
 	return {
