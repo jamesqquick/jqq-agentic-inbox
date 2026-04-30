@@ -25,7 +25,8 @@
  *   URL              — url
  *   Description      — rich_text
  *   Content Types    — multi_select (Talk, Workshop, Lightning Talk, Panel, Keynote, Other)
- *   Notes            — rich_text
+ *
+ *   Notes are added to the page body rather than a dedicated property.
  */
 
 // ── Notion property value types ────────────────────────────────────
@@ -104,7 +105,6 @@ export interface CfpProperties {
 	URL?: NotionUrlProperty;
 	Description?: NotionRichTextProperty;
 	"Content Types"?: NotionMultiSelectProperty;
-	Notes?: NotionRichTextProperty;
 }
 
 // ── Property interfaces ──────────────────────────────────────────
@@ -304,7 +304,7 @@ export function buildCreateCfpItemRequest(
 		url?: string;
 		description?: string;
 		contentTypes?: CfpContentType[];
-		notes?: string;
+		bodyText?: string;
 	},
 ): NotionCreatePageRequest {
 	const properties: CfpProperties = {
@@ -337,15 +337,22 @@ export function buildCreateCfpItemRequest(
 		};
 	}
 
-	if (params.notes) {
-		properties.Notes = {
-			rich_text: [{ type: "text", text: { content: params.notes.slice(0, 2000) } }],
-		};
+	const children: NotionBlock[] = [];
+
+	if (params.bodyText?.trim()) {
+		children.push({
+			object: "block",
+			type: "paragraph",
+			paragraph: {
+				rich_text: [{ type: "text", text: { content: params.bodyText.slice(0, 2000) } }],
+			},
+		});
 	}
 
 	return {
 		parent: { database_id: databaseId },
 		properties,
+		children: children.length > 0 ? children : undefined,
 	};
 }
 

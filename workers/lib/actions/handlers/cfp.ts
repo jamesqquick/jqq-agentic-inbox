@@ -167,7 +167,7 @@ Rules:
 	const deadline = cfpDetails?.deadline || undefined;
 	const description = cfpDetails?.description || undefined;
 	const contentTypes = cfpDetails?.contentTypes?.length ? cfpDetails.contentTypes : undefined;
-	const notes = cfpDetails?.notes || (ctx.body.trim() ? ctx.body.trim().slice(0, 2000) : undefined);
+	const bodyText = cfpDetails?.notes || (ctx.body.trim() ? ctx.body.trim().slice(0, 2000) : undefined);
 
 	const notionParams = {
 		title,
@@ -176,7 +176,7 @@ Rules:
 		url: cfpUrl,
 		description,
 		contentTypes,
-		notes,
+		bodyText,
 	};
 	console.log(`[CFP] Creating Notion item — title: "${notionParams.title}", status: "${notionParams.status}", deadline: ${notionParams.deadline ?? "none"}, contentTypes: ${JSON.stringify(notionParams.contentTypes ?? [])}`);
 
