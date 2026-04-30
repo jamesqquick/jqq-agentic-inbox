@@ -1,5 +1,5 @@
 import type { ActionContext, ActionHandler } from "../types";
-import type { CfpContentType } from "../../notion";
+import type { CfpContentType, CfpTalkIdea } from "../../notion";
 import { createCfpItem } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml, stripHtmlToText } from "../../email-helpers";
@@ -78,6 +78,86 @@ function parseAiResponse(raw: string): {
 		};
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * Parse the brainstorming AI response into structured talk ideas.
+ */
+function parseTalkIdeas(raw: string): CfpTalkIdea[] {
+	try {
+		const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+		const parsed = JSON.parse(cleaned);
+		const ideas = Array.isArray(parsed) ? parsed : parsed.ideas || [];
+		return ideas
+			.filter((idea: any) => idea.title && idea.pitch)
+			.map((idea: any) => ({
+				title: String(idea.title),
+				pitch: String(idea.pitch),
+				contentType: idea.contentType ? String(idea.contentType) : undefined,
+			}));
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Brainstorm talk ideas based on CFP details and speaker expertise.
+ * Returns structured ideas or an empty array if AI fails.
+ */
+async function brainstormTalkIdeas(
+	ai: any,
+	cfpTitle: string,
+	cfpDescription: string | undefined,
+	cfpNotes: string | undefined,
+	cfpContentTypes: CfpContentType[] | undefined,
+): Promise<CfpTalkIdea[]> {
+	const cfpContext = [
+		`Conference: ${cfpTitle}`,
+		cfpDescription ? `Description: ${cfpDescription}` : "",
+		cfpNotes ? `Additional context: ${cfpNotes}` : "",
+		cfpContentTypes?.length ? `Accepted formats: ${cfpContentTypes.join(", ")}` : "",
+	].filter(Boolean).join("\n");
+
+	try {
+		const response = await ai.run("@cf/meta/llama-3.1-8b-instruct-fast" as any, {
+			messages: [
+				{
+					role: "system",
+					content: `You are a talk proposal brainstorming assistant for a developer advocate and content creator.
+
+The speaker's expertise areas:
+- AI agents and agentic workflows (building with LLMs, tool calling, agent orchestration)
+- Content creation with AI (automated pipelines, AI-assisted writing, video production)
+- Cloudflare developer platform (Workers, Pages, D1, R2, Durable Objects, KV, AI Gateway, Agents SDK, Workflows)
+- Web development and developer tooling (TypeScript, React, full-stack)
+- Developer education and community building (YouTube, courses, workshops)
+
+Generate 3-5 talk ideas that would be a strong fit for the conference described below. Each idea should connect the speaker's expertise to what the conference is looking for.
+
+Return ONLY valid JSON (no markdown, no explanation):
+[
+  {
+    "title": "Proposed talk title",
+    "pitch": "1-2 sentence pitch explaining the angle and why it fits this conference",
+    "contentType": "Talk, Workshop, Lightning Talk, etc. — pick the best format"
+  }
+]
+
+Be creative and specific. Avoid generic titles. Each idea should have a distinct angle.`,
+				},
+				{
+					role: "user",
+					content: cfpContext,
+				},
+			],
+		});
+
+		const text = typeof response === "string" ? response : (response as { response?: string }).response || "";
+		return parseTalkIdeas(text);
+	} catch (e) {
+		console.error("[CFP] Talk idea brainstorming failed:", (e as Error).message);
+		return [];
 	}
 }
 
@@ -169,6 +249,17 @@ Rules:
 	const contentTypes = cfpDetails?.contentTypes?.length ? cfpDetails.contentTypes : undefined;
 	const bodyText = cfpDetails?.notes || (ctx.body.trim() ? ctx.body.trim().slice(0, 2000) : undefined);
 
+	// Brainstorm talk ideas based on the extracted CFP details
+	console.log(`[CFP] Brainstorming talk ideas for "${title}"`);
+	const talkIdeas = await brainstormTalkIdeas(
+		ctx.env.AI,
+		title,
+		description,
+		cfpDetails?.notes,
+		contentTypes,
+	);
+	console.log(`[CFP] Generated ${talkIdeas.length} talk idea(s)${talkIdeas.length > 0 ? `: ${talkIdeas.map((i) => `"${i.title}"`).join(", ")}` : ""}`);
+
 	const notionParams = {
 		title,
 		status: "New" as const,
@@ -177,8 +268,9 @@ Rules:
 		description,
 		contentTypes,
 		bodyText,
+		talkIdeas: talkIdeas.length > 0 ? talkIdeas : undefined,
 	};
-	console.log(`[CFP] Creating Notion item — title: "${notionParams.title}", status: "${notionParams.status}", deadline: ${notionParams.deadline ?? "none"}, contentTypes: ${JSON.stringify(notionParams.contentTypes ?? [])}`);
+	console.log(`[CFP] Creating Notion item — title: "${notionParams.title}", status: "${notionParams.status}", deadline: ${notionParams.deadline ?? "none"}, contentTypes: ${JSON.stringify(notionParams.contentTypes ?? [])}, talkIdeas: ${talkIdeas.length}`);
 
 	let cfpItem;
 	try {
