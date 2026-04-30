@@ -1,7 +1,14 @@
 import type { Env } from "../../types";
-import { getActionHandler } from "./registry";
+import { getMailboxStub } from "../email-helpers";
+import { getActionFolderName, getActionHandler } from "./registry";
 
 const TAG_REGEX = /^\[([a-zA-Z][a-zA-Z0-9_]*)\]\s*/;
+
+function slugifyFolderName(name: string, fallback: string) {
+	return name.toString().toLowerCase()
+		.replace(/\s+/g, "-").replace(/[^\w-]+/g, "")
+		.replace(/--+/g, "-").replace(/^-+/, "").replace(/-+$/, "") || fallback.toLowerCase();
+}
 
 /**
  * Parse a `[TAG]` prefix from the beginning of an email subject line.
@@ -49,4 +56,16 @@ export async function routeEmailAction(params: {
 	});
 
 	console.log(`[Actions] [${params.tag}] action completed for email ${params.emailId}`);
+
+	const folderName = getActionFolderName(params.tag);
+	const folderId = slugifyFolderName(folderName, params.tag);
+	const stub = getMailboxStub(params.env, params.mailboxId);
+	const folder = await stub.getOrCreateFolder(folderId, folderName);
+	const moved = await stub.moveEmail(params.emailId, folder.id);
+
+	if (!moved) {
+		throw new Error(`Unable to move email ${params.emailId} to folder ${folder.id}`);
+	}
+
+	console.log(`[Actions] Moved email ${params.emailId} to ${folder.name} folder`);
 }
