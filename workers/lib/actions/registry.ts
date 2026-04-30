@@ -29,6 +29,23 @@ const actionRegistry: Record<string, ActionHandler> = {
 	CFP: handleCfp,
 };
 
+const tagFolderNames: Record<string, string> = {
+	LOG: "Logs",
+	SUMMARY: "Summaries",
+	IDEA: "Ideas",
+	TWITTER: "Twitter",
+	VIDEO: "Videos",
+	BLOG: "Blog",
+	SHORT: "Shorts",
+	LINKEDIN: "LinkedIn",
+	CFP: "CFPs",
+};
+
 export function getActionHandler(tag: string): ActionHandler | undefined {
 	return actionRegistry[tag.toUpperCase()];
+}
+
+export function getActionFolderName(tag: string): string {
+	const normalizedTag = tag.toUpperCase();
+	return tagFolderNames[normalizedTag] || normalizedTag.charAt(0) + normalizedTag.slice(1).toLowerCase();
 }

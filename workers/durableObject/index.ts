@@ -602,6 +602,31 @@ export class MailboxDO extends DurableObject<Env> {
 		}
 	}
 
+	async getOrCreateFolder(id: string, name: string) {
+		const existing = this.db
+			.select({ id: schema.folders.id, name: schema.folders.name })
+			.from(schema.folders)
+			.where(or(eq(schema.folders.id, id), eq(schema.folders.name, name)))
+			.limit(1)
+			.get();
+
+		if (existing) return existing;
+
+		const created = await this.createFolder(id, name);
+		if (created) return { id: created.id, name: created.name };
+
+		const retry = this.db
+			.select({ id: schema.folders.id, name: schema.folders.name })
+			.from(schema.folders)
+			.where(or(eq(schema.folders.id, id), eq(schema.folders.name, name)))
+			.limit(1)
+			.get();
+
+		if (retry) return retry;
+
+		throw new Error(`Unable to create folder "${name}"`);
+	}
+
 	async updateFolder(id: string, name: string) {
 		const result = this.db
 			.update(schema.folders)
