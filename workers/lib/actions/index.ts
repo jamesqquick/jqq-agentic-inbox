@@ -67,5 +67,10 @@ export async function routeEmailAction(params: {
 		throw new Error(`Unable to move email ${params.emailId} to folder ${folder.id}`);
 	}
 
-	console.log(`[Actions] Moved email ${params.emailId} to ${folder.name} folder`);
+	const updated = await stub.updateEmail(params.emailId, { read: true });
+	if (!updated) {
+		throw new Error(`Unable to mark email ${params.emailId} as read`);
+	}
+
+	console.log(`[Actions] Moved email ${params.emailId} to ${folder.name} folder and marked it as read`);
 }
