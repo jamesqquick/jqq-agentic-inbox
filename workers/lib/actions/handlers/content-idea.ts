@@ -1,26 +1,15 @@
-import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
 import type { ActionContext } from "../types";
 import type { ContentCategory, ContentReference } from "../../notion";
 import { createContentItem } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
+import { BrowserMarkdownSession, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
 
 const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
 const MAX_LINKS_TO_FETCH = 5;
-const BROWSER_RENDER_TIMEOUT_MS = 10_000;
-const MAX_HTML_INPUT_LENGTH = 200_000;
-const MAX_MARKDOWN_INPUT_LENGTH = 8000;
 const MAX_LINK_NOTE_SUBJECT_LENGTH = 300;
 const MAX_LINK_NOTE_BODY_LENGTH = 2000;
-
-type MarkdownConversionResult = {
-	format?: string;
-	data?: string;
-	error?: string;
-};
-
-type BrowserSession = Awaited<ReturnType<typeof puppeteer.launch>>;
 
 /**
  * Extract unique URLs from the email subject and body.
@@ -34,70 +23,6 @@ function extractLinks(subject: string, body: string): string[] {
 
 function cleanExtractedUrl(url: string): string {
 	return url.replace(/[),.;:!?]+$/, "");
-}
-
-function redactUrlForLog(url: string): string {
-	try {
-		const parsed = new URL(url);
-		parsed.username = "";
-		parsed.password = "";
-		parsed.search = "";
-		parsed.hash = "";
-		return parsed.toString();
-	} catch {
-		return "[invalid-url]";
-	}
-}
-
-function browserWorkerFromFetcher(fetcher: Fetcher): BrowserWorker {
-	return { fetch: fetcher.fetch.bind(fetcher) as typeof fetch };
-}
-
-async function fetchMarkdownWithBrowserRunBinding(
-	browser: BrowserSession,
-	ai: Ai,
-	url: string,
-): Promise<string | null> {
-	let page: Awaited<ReturnType<BrowserSession["newPage"]>> | null = null;
-
-	try {
-		page = await browser.newPage();
-		const response = await page.goto(url, {
-			waitUntil: "domcontentloaded",
-			timeout: BROWSER_RENDER_TIMEOUT_MS,
-		});
-		if (!response || !response.ok()) {
-			console.warn(`[ContentIdea] Browser Run received an unsuccessful response for ${redactUrlForLog(url)}: ${response?.status() ?? "no response"}`);
-			return null;
-		}
-
-		const html = (await page.content()).slice(0, MAX_HTML_INPUT_LENGTH);
-		if (!html.trim()) {
-			console.warn(`[ContentIdea] Browser Run returned no HTML for ${redactUrlForLog(url)}`);
-			return null;
-		}
-
-		const markdown = await ai.toMarkdown({
-			name: "page.html",
-			blob: new Blob([html], { type: "text/html" }),
-		}) as MarkdownConversionResult;
-
-		if (!markdown.data?.trim()) {
-			console.warn(`[ContentIdea] AI markdown conversion returned no content for ${redactUrlForLog(url)}${markdown.error ? `: ${markdown.error}` : ""}`);
-			return null;
-		}
-
-		return markdown.data.slice(0, MAX_MARKDOWN_INPUT_LENGTH);
-	} catch (e) {
-		console.warn(`[ContentIdea] Browser Run binding error for ${redactUrlForLog(url)}:`, (e as Error).message);
-		return null;
-	} finally {
-		if (page) {
-			await page.close().catch((e) => {
-				console.warn(`[ContentIdea] Failed to close Browser Run page for ${redactUrlForLog(url)}:`, (e as Error).message);
-			});
-		}
-	}
 }
 
 async function generateLinkNote(
@@ -131,7 +56,7 @@ async function generateLinkNote(
 
 		return note.trim() || null;
 	} catch (e) {
-		console.warn(`[ContentIdea] AI link note generation failed for ${redactUrlForLog(url)}:`, (e as Error).message);
+		console.warn(`[ContentIdea] AI link note generation failed for ${redactUrlForLog(url)}:`, redactUrlsInText((e as Error).message));
 		return null;
 	}
 }
@@ -148,15 +73,13 @@ async function buildContentReferences(
 		console.warn(`[${ctx.tag}] Found ${links.length} links; generating notes for first ${linksToFetch.length}`);
 	}
 
-	const browserBinding = browserWorkerFromFetcher(ctx.env.BROWSER);
-	let browser: BrowserSession | null = null;
+	let browser: BrowserMarkdownSession | null = null;
 
 	try {
-		browser = await puppeteer.launch(browserBinding);
-		const activeBrowser = browser;
+		browser = await BrowserMarkdownSession.create(ctx.env.BROWSER, ctx.env.AI);
 		const summarized: ContentReference[] = [];
 		for (const url of linksToFetch) {
-			const markdown = await fetchMarkdownWithBrowserRunBinding(activeBrowser, ctx.env.AI, url);
+			const markdown = await browser.fetchMarkdown(url, "ContentIdea");
 			if (!markdown) {
 				summarized.push({ url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." });
 				continue;
@@ -174,16 +97,14 @@ async function buildContentReferences(
 			...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
 		];
 	} catch (e) {
-		console.warn(`[${ctx.tag}] Failed to launch Browser Run session:`, (e as Error).message);
+		console.warn(`[${ctx.tag}] Failed to launch Browser Run session:`, redactUrlsInText((e as Error).message));
 		return links.map((url) => ({
 			url,
 			note: "Unable to generate notes because Browser Run could not start a browser session.",
 		}));
 	} finally {
 		if (browser) {
-			await browser.close().catch((e) => {
-				console.warn(`[${ctx.tag}] Failed to close Browser Run session:`, (e as Error).message);
-			});
+			await browser.close(ctx.tag);
 		}
 	}
 }
@@ -292,7 +213,7 @@ export async function handleContentIdea(
 
 	console.log(`[${ctx.tag}] Processing: subject="${rawSubject || "(empty)"}", body=${ctx.body.length} chars (emailId: ${ctx.emailId}, sender: ${ctx.sender})`);
 	if (hasBody) {
-		console.log(`[${ctx.tag}] Body preview: "${ctx.body.substring(0, 200)}"`);
+		console.log(`[${ctx.tag}] Body preview: "${redactUrlsInText(ctx.body.substring(0, 200))}"`);
 	}
 
 	// Extract any URLs from the email — these go in the References section of the page body.
