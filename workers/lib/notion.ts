@@ -286,6 +286,24 @@ export function buildCreateContentItemRequest(
 // ── API calls ──────────────────────────────────────────────────────
 
 const NOTION_API_VERSION = "2022-06-28";
+const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
+
+function redactUrlForLog(url: string): string {
+	try {
+		const parsed = new URL(url);
+		parsed.username = "";
+		parsed.password = "";
+		parsed.search = "";
+		parsed.hash = "";
+		return parsed.toString();
+	} catch {
+		return "[invalid-url]";
+	}
+}
+
+function redactUrlsInText(text: string): string {
+	return text.replace(URL_REGEX, (url) => redactUrlForLog(url));
+}
 
 /**
  * Create a new Content item in Notion.
@@ -357,13 +375,15 @@ export function buildCreateCfpItemRequest(
 	const children: NotionBlock[] = [];
 
 	if (params.bodyText?.trim()) {
-		children.push({
-			object: "block",
-			type: "paragraph",
-			paragraph: {
-				rich_text: [{ type: "text", text: { content: params.bodyText.slice(0, 2000) } }],
-			},
-		});
+		for (const chunk of splitTextIntoChunks(params.bodyText, 2000)) {
+			children.push({
+				object: "block",
+				type: "paragraph",
+				paragraph: {
+					rich_text: [{ type: "text", text: { content: chunk } }],
+				},
+			});
+		}
 	}
 
 	if (params.talkIdeas && params.talkIdeas.length > 0) {
@@ -531,8 +551,9 @@ async function notionRequest(
 
 	if (!response.ok) {
 		const errorBody = await response.text();
-		console.error(`[Notion] ${method} ${endpoint} failed — ${response.status}: ${errorBody}`);
-		throw new Error(`Notion API error ${response.status}: ${errorBody}`);
+		const redactedError = redactUrlsInText(errorBody);
+		console.error(`[Notion] ${method} ${endpoint} failed — ${response.status}: ${redactedError}`);
+		throw new Error(`Notion API error ${response.status}: ${redactedError}`);
 	}
 
 	console.log(`[Notion] ${method} ${endpoint} — ${response.status} OK`);
