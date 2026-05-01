@@ -5,7 +5,13 @@
 	"type": "module",
 	"cloudflare": {
 		"label": "Agentic Inbox",
-		"products": ["Workers", "Durable Objects", "R2", "Workers AI"],
+		"products": [
+			"Workers",
+			"Durable Objects",
+			"R2",
+			"Workers AI",
+			"Browser Run"
+		],
 		"bindings": {
 			"DOMAINS": {
 				"description": "Your domain with [Email Routing](https://developers.cloudflare.com/email-routing/) enabled (e.g. `example.com`). After deploying, create a catch-all Email Routing rule pointing to this Worker."
@@ -81,6 +87,7 @@
 		"@tiptap/extension-text": "3.20.2"
 	},
 	"devDependencies": {
+		"@cloudflare/puppeteer": "^1.1.0",
 		"@cloudflare/vite-plugin": "^1.0.12",
 		"@cloudflare/workers-types": "^4.20251128.0",
 		"@react-router/dev": "^7.5.3",
