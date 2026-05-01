@@ -35,6 +35,10 @@
   "ai": {
     "binding": "AI",
   },
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true,
+  },
   "durable_objects": {
     "bindings": [
       {
