@@ -1,20 +1,168 @@
 import type { ActionContext } from "../types";
-import type { ContentCategory } from "../../notion";
+import type { ContentCategory, ContentReference } from "../../notion";
 import { createContentItem } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
 
 const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
+const MAX_LINKS_TO_FETCH = 5;
+const BROWSER_MARKDOWN_TIMEOUT_MS = 10_000;
+const MAX_MARKDOWN_INPUT_LENGTH = 8000;
+const MAX_LINK_NOTE_SUBJECT_LENGTH = 300;
+const MAX_LINK_NOTE_BODY_LENGTH = 2000;
+
+interface BrowserMarkdownResponse {
+	success?: boolean;
+	result?: string;
+	errors?: Array<{ message?: string }>;
+}
 
 /**
  * Extract unique URLs from the email subject and body.
  */
 function extractLinks(subject: string, body: string): string[] {
 	const urls = new Set<string>();
-	for (const match of subject.matchAll(URL_REGEX)) urls.add(match[0]);
-	for (const match of body.matchAll(URL_REGEX)) urls.add(match[0]);
+	for (const match of subject.matchAll(URL_REGEX)) urls.add(cleanExtractedUrl(match[0]));
+	for (const match of body.matchAll(URL_REGEX)) urls.add(cleanExtractedUrl(match[0]));
 	return [...urls];
+}
+
+function cleanExtractedUrl(url: string): string {
+	return url.replace(/[),.;:!?]+$/, "");
+}
+
+function redactUrlForLog(url: string): string {
+	try {
+		const parsed = new URL(url);
+		parsed.username = "";
+		parsed.password = "";
+		parsed.search = "";
+		parsed.hash = "";
+		return parsed.toString();
+	} catch {
+		return "[invalid-url]";
+	}
+}
+
+async function fetchMarkdownWithBrowserRun(
+	accountId: string,
+	apiToken: string,
+	url: string,
+): Promise<string | null> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), BROWSER_MARKDOWN_TIMEOUT_MS);
+
+	try {
+		const response = await fetch(
+			`https://api.cloudflare.com/client/v4/accounts/${accountId}/browser-rendering/markdown`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${apiToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ url }),
+				signal: controller.signal,
+			},
+		);
+
+		if (!response.ok) {
+			console.warn(`[ContentIdea] Browser Run markdown failed for ${redactUrlForLog(url)}: ${response.status}`);
+			return null;
+		}
+
+		const payload = await response.json<BrowserMarkdownResponse>();
+		if (!payload.success || !payload.result?.trim()) {
+			const errorMessage = payload.errors?.map((error) => error.message).filter(Boolean).join("; ");
+			console.warn(`[ContentIdea] Browser Run markdown returned no content for ${redactUrlForLog(url)}${errorMessage ? `: ${errorMessage}` : ""}`);
+			return null;
+		}
+
+		return payload.result.slice(0, MAX_MARKDOWN_INPUT_LENGTH);
+	} catch (e) {
+		const error = e as Error;
+		const message = error.name === "AbortError" ? "request timed out" : error.message;
+		console.warn(`[ContentIdea] Browser Run markdown error for ${redactUrlForLog(url)}: ${message}`);
+		return null;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+async function generateLinkNote(
+	ai: any,
+	url: string,
+	markdown: string,
+	promptHint: string,
+	ideaSubject: string,
+	ideaBody: string,
+): Promise<string | null> {
+	try {
+		const boundedSubject = ideaSubject.slice(0, MAX_LINK_NOTE_SUBJECT_LENGTH);
+		const boundedBody = ideaBody.slice(0, MAX_LINK_NOTE_BODY_LENGTH);
+		const aiResponse = await ai.run("@cf/meta/llama-3.1-8b-instruct-fast" as any, {
+			messages: [
+				{
+					role: "system",
+					content:
+						"You create concise research notes for content ideas. Focus only on details that could help produce the content. Keep the note under 120 words.",
+				},
+				{
+					role: "user",
+					content: `The user is saving ${promptHint}. Review this linked page and write a concise note explaining what is relevant for producing the content. Include useful angles, facts, examples, or caveats.\n\nIdea subject: ${boundedSubject}\n${boundedBody ? `Idea body: ${boundedBody}\n` : ""}\nURL: ${url}\n\nPage Markdown:\n${markdown}`,
+				},
+			],
+		});
+
+		const note = typeof aiResponse === "string"
+			? aiResponse
+			: (aiResponse as { response?: string }).response || "";
+
+		return note.trim() || null;
+	} catch (e) {
+		console.warn(`[ContentIdea] AI link note generation failed for ${redactUrlForLog(url)}:`, (e as Error).message);
+		return null;
+	}
+}
+
+async function buildContentReferences(
+	ctx: ActionContext,
+	links: string[],
+	promptHint: string,
+	ideaSubject: string,
+	ideaBody: string,
+): Promise<ContentReference[]> {
+	const accountId = ctx.env.BROWSER_RENDERING_ACCOUNT_ID;
+	const apiToken = ctx.env.BROWSER_RENDERING_API_TOKEN;
+
+	if (!accountId || !apiToken) {
+		console.warn(`[${ctx.tag}] Browser Run credentials are not configured; saving links without generated notes`);
+		return links.map((url) => ({ url }));
+	}
+
+	const linksToFetch = links.slice(0, MAX_LINKS_TO_FETCH);
+	if (links.length > linksToFetch.length) {
+		console.warn(`[${ctx.tag}] Found ${links.length} links; generating notes for first ${linksToFetch.length}`);
+	}
+
+	const summarized = await Promise.all(linksToFetch.map(async (url) => {
+		const markdown = await fetchMarkdownWithBrowserRun(accountId, apiToken, url);
+		if (!markdown) {
+			return { url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." };
+		}
+
+		const note = await generateLinkNote(ctx.env.AI, url, markdown, promptHint, ideaSubject, ideaBody);
+		return {
+			url,
+			note: note || "Unable to generate notes from the retrieved page content.",
+		};
+	}));
+
+	return [
+		...summarized,
+		...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
+	];
 }
 
 /**
@@ -126,18 +274,26 @@ export async function handleContentIdea(
 
 	// Extract any URLs from the email — these go in the References section of the page body.
 	const links = extractLinks(rawSubject, ctx.body);
-	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${links.length > 0 ? `: ${links.join(", ")}` : ""}`);
+	const logLinks = links.map(redactUrlForLog);
+	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${logLinks.length > 0 ? `: ${logLinks.join(", ")}` : ""}`);
 
 	// Generate a concise title and description with AI
 	// Use body as the primary input if subject is empty
 	const aiSubjectInput = hasSubject ? rawSubject : "(see body)";
 	const aiBodyInput = ctx.body;
-	const { title: ideaTitle, description: ideaDescription } = await generateIdeaSummary(
+	const referencesPromise = links.length > 0
+		? buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput)
+		: Promise.resolve([]);
+	const summaryPromise = generateIdeaSummary(
 		ctx.env.AI,
 		aiSubjectInput,
 		aiBodyInput,
 		options.promptHint,
 	);
+	const [references, { title: ideaTitle, description: ideaDescription }] = await Promise.all([
+		referencesPromise,
+		summaryPromise,
+	]);
 	console.log(`[${ctx.tag}] AI generated — title: "${ideaTitle}", description: ${ideaDescription ? `${ideaDescription.length} chars` : "none"}`);
 
 	// Create the parent Content item
@@ -146,7 +302,7 @@ export async function handleContentIdea(
 		status: "Idea" as const,
 		categories: options.category ? [options.category] : undefined,
 		bodyText: ideaDescription || undefined,
-		links: links.length > 0 ? links : undefined,
+		links: references.length > 0 ? references : undefined,
 	};
 	console.log(`[${ctx.tag}] Creating Notion item — title: "${notionParams.title}", status: "${notionParams.status}", categories: ${JSON.stringify(notionParams.categories ?? [])}, links: ${notionParams.links?.length ?? 0}, bodyText: ${notionParams.bodyText ? `${notionParams.bodyText.length} chars` : "none"}`);
 

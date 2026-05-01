@@ -62,6 +62,8 @@ npm run dev
 1. Set your domain in `wrangler.jsonc`
 2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
 
+Optional content idea link notes use [Browser Run](https://developers.cloudflare.com/browser-run/) to convert linked pages to Markdown before Workers AI generates Notion notes. To enable them, set `BROWSER_RENDERING_ACCOUNT_ID` and `BROWSER_RENDERING_API_TOKEN` as Worker secrets. Link-note generation is capped to the first five links per email. If either value is missing, content idea emails still save links without generated notes.
+
 ### Deploy
 
 ```bash

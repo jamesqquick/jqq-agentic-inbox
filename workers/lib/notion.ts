@@ -92,6 +92,11 @@ export type ContentAudience = "Beginner" | "Intermediate" | "Advanced";
 
 export type ContentPriority = "High" | "Medium" | "Low";
 
+export interface ContentReference {
+	url: string;
+	note?: string;
+}
+
 // ── CFP database specific types ──────────────────────────────────
 
 export type CfpStatus = "New" | "Submitted" | "Accepted" | "Rejected" | "Expired";
@@ -186,7 +191,7 @@ export function buildCreateContentItemRequest(
 		priority?: ContentPriority;
 		targetDate?: string;
 		bodyText?: string;
-		links?: string[];
+		links?: Array<string | ContentReference>;
 	},
 ): NotionCreatePageRequest {
 	const properties: ContentProperties = {
@@ -256,11 +261,16 @@ export function buildCreateContentItemRequest(
 		});
 
 		for (const link of params.links) {
+			const reference = typeof link === "string" ? { url: link } : link;
+			const note = reference.note?.trim();
 			children.push({
 				object: "block",
 				type: "bulleted_list_item",
 				bulleted_list_item: {
-					rich_text: [{ type: "text", text: { content: link, link: { url: link } } }],
+					rich_text: [
+						{ type: "text", text: { content: reference.url, link: { url: reference.url } } },
+						...(note ? [{ type: "text" as const, text: { content: `\nNotes: ${note.slice(0, 1800)}` } }] : []),
+					],
 				},
 			});
 		}
