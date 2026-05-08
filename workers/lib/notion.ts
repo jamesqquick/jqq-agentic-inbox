@@ -27,6 +27,16 @@
  *   Content Types    — multi_select (Talk, Workshop, Lightning Talk, Panel, Keynote, Other)
  *
  *   Notes are added to the page body rather than a dedicated property.
+ *
+ * Resources Database Schema:
+ *   Name             — title       (required)
+ *   URL              — url
+ *   Type             — select      (Article, Tool, Video, Course, Repo, Tweet, Podcast, Book)
+ *   Category         — multi_select (Design, Dev Tools, Articles, Inspiration, AI, Cloudflare, Tutorials, Books)
+ *   Tags             — multi_select (React, TypeScript, CSS, Cloudflare, AI, Notion, Productivity)
+ *   Status           — select      (To Review, Reviewed, Using, Archived)
+ *   Notes            — rich_text
+ *   Date Added       — created_time (auto)
  */
 
 // ── Notion property value types ────────────────────────────────────
@@ -112,6 +122,49 @@ export interface CfpProperties {
 	"Content Types"?: NotionMultiSelectProperty;
 }
 
+// ── Resources database specific types ────────────────────────────
+
+export type ResourceType =
+	| "Article"
+	| "Tool"
+	| "Video"
+	| "Course"
+	| "Repo"
+	| "Tweet"
+	| "Podcast"
+	| "Book";
+
+export type ResourceCategory =
+	| "Design"
+	| "Dev Tools"
+	| "Articles"
+	| "Inspiration"
+	| "AI"
+	| "Cloudflare"
+	| "Tutorials"
+	| "Books";
+
+export type ResourceTag =
+	| "React"
+	| "TypeScript"
+	| "CSS"
+	| "Cloudflare"
+	| "AI"
+	| "Notion"
+	| "Productivity";
+
+export type ResourceStatus = "To Review" | "Reviewed" | "Using" | "Archived";
+
+export interface ResourceProperties {
+	Name: NotionTitleProperty;
+	URL?: NotionUrlProperty;
+	Type?: NotionSelectProperty;
+	Category?: NotionMultiSelectProperty;
+	Tags?: NotionMultiSelectProperty;
+	Status?: NotionSelectProperty;
+	Notes?: NotionRichTextProperty;
+}
+
 // ── Property interfaces ──────────────────────────────────────────
 
 export interface ContentProperties {
@@ -150,7 +203,7 @@ export type NotionBlock = NotionParagraphBlock | NotionHeadingBlock | NotionBull
 
 export interface NotionCreatePageRequest {
 	parent: { database_id: string } | { page_id: string };
-	properties: ContentProperties | CfpProperties | { title: NotionRichText[] };
+	properties: ContentProperties | CfpProperties | ResourceProperties | { title: NotionRichText[] };
 	children?: NotionBlock[];
 }
 
@@ -431,6 +484,79 @@ export async function createCfpItem(
 	params: Parameters<typeof buildCreateCfpItemRequest>[1],
 ): Promise<NotionCreatePageResponse> {
 	const body = buildCreateCfpItemRequest(databaseId, params);
+	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
+	return response as NotionCreatePageResponse;
+}
+
+// ── Resources helpers ────────────────────────────────────────────
+
+/**
+ * Build a create-page request for the Resources database.
+ */
+export function buildCreateResourceItemRequest(
+	databaseId: string,
+	params: {
+		name: string;
+		url?: string;
+		type?: ResourceType;
+		categories?: ResourceCategory[];
+		tags?: ResourceTag[];
+		status?: ResourceStatus;
+		notes?: string;
+	},
+): NotionCreatePageRequest {
+	const properties: ResourceProperties = {
+		Name: {
+			title: [{ type: "text", text: { content: params.name } }],
+		},
+	};
+
+	if (params.url) {
+		properties.URL = { url: params.url };
+	}
+
+	if (params.type) {
+		properties.Type = { select: { name: params.type } };
+	}
+
+	if (params.categories && params.categories.length > 0) {
+		properties.Category = {
+			multi_select: params.categories.map((name) => ({ name })),
+		};
+	}
+
+	if (params.tags && params.tags.length > 0) {
+		properties.Tags = {
+			multi_select: params.tags.map((name) => ({ name })),
+		};
+	}
+
+	if (params.status) {
+		properties.Status = { select: { name: params.status } };
+	}
+
+	if (params.notes?.trim()) {
+		// Notion rich_text values cap at 2000 chars per text block.
+		properties.Notes = {
+			rich_text: [{ type: "text", text: { content: params.notes.slice(0, 2000) } }],
+		};
+	}
+
+	return {
+		parent: { database_id: databaseId },
+		properties,
+	};
+}
+
+/**
+ * Create a new Resource item in Notion.
+ */
+export async function createResourceItem(
+	apiKey: string,
+	databaseId: string,
+	params: Parameters<typeof buildCreateResourceItemRequest>[1],
+): Promise<NotionCreatePageResponse> {
+	const body = buildCreateResourceItemRequest(databaseId, params);
 	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
 	return response as NotionCreatePageResponse;
 }

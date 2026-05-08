@@ -15,6 +15,7 @@
     "EMAIL_ADDRESSES": [],
     "CONTENT_PIPELINE_DB_ID": "34919d8297318027a6e6eb07cb86dfac",
     "CFP_DB_ID": "35219d82973180eab5fae82cbfbee862",
+    "RESOURCES_DB_ID": "d8c664d956b04bf5a6a6d251c96b5d2a",
   },
   "send_email": [
     {
