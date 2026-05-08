@@ -8,6 +8,7 @@ import { handleBlog } from "./handlers/blog";
 import { handleShort } from "./handlers/short";
 import { handleLinkedin } from "./handlers/linkedin";
 import { handleCfp } from "./handlers/cfp";
+import { handleResource } from "./handlers/resource";
 
 /**
  * Hardcoded mapping of subject-line tags to action handlers.
@@ -27,6 +28,7 @@ const actionRegistry: Record<string, ActionHandler> = {
 	SHORT: handleShort,
 	LINKEDIN: handleLinkedin,
 	CFP: handleCfp,
+	RESOURCE: handleResource,
 };
 
 const tagFolderNames: Record<string, string> = {
@@ -39,6 +41,7 @@ const tagFolderNames: Record<string, string> = {
 	SHORT: "Shorts",
 	LINKEDIN: "LinkedIn",
 	CFP: "CFPs",
+	RESOURCE: "Resources",
 };
 
 export function getActionHandler(tag: string): ActionHandler | undefined {
