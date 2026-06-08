@@ -1,6 +1,6 @@
 import type { ActionContext } from "../types";
-import type { ContentCategory, ContentReference } from "../../notion";
-import { createContentItem } from "../../notion";
+import type { ContentCategory, ContentReference, NotionBlock } from "../../notion";
+import { createContentItem, appendBlocksToPage } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
@@ -164,6 +164,125 @@ Respond in JSON format only, no other text: {"title": "...", "description": "...
 	return { title: fallbackTitle, description: body || "" };
 }
 
+const DIRECTION_OPTIONS_COUNT = 4;
+
+/**
+ * Use Workers AI to brainstorm distinct content direction options.
+ *
+ * Each option is a short (2-sentence) pitch describing a unique angle the
+ * content could take. When a category is provided (e.g. "YouTube" from
+ * [VIDEO]), directions are scoped to that format. Generic [IDEA] directions
+ * are format-agnostic.
+ *
+ * Returns an array of direction pitch strings, or null if generation fails.
+ */
+async function generateDirectionOptions(
+	ai: Ai,
+	title: string,
+	description: string,
+	references: ContentReference[],
+	promptHint: string,
+	category: ContentCategory | undefined,
+): Promise<string[] | null> {
+	try {
+		const refContext = references
+			.filter((r) => r.note)
+			.map((r) => `- ${r.url}: ${r.note}`)
+			.join("\n");
+
+		const formatScope = category
+			? `All directions should be specifically for a ${category} piece of content.`
+			: "Directions can suggest any content format (video, blog post, short, tweet, etc.).";
+
+		const prompt = `Given the following content idea, generate exactly ${DIRECTION_OPTIONS_COUNT} distinct direction options. Each option is a 2-sentence pitch describing a unique angle for the content. The directions should be meaningfully different from each other — different angles, audiences, or scopes, not just rephrasing the same idea.
+
+${formatScope}
+
+Title: ${title}
+Description: ${description}
+${refContext ? `\nReference material:\n${refContext}\n` : ""}
+Rules:
+- Each option must be exactly 2 sentences
+- No generic openers like "This content will..." or "In this piece..."
+- Be specific about what the content covers and who it serves
+- Each option should feel like a genuinely different piece of content
+
+Respond in JSON format only, no other text: {"directions": ["option 1...", "option 2...", "option 3...", "option 4..."]}`;
+
+		const aiResponse = await ai.run("@cf/meta/llama-4-scout-17b-16e-instruct" as any, {
+			messages: [
+				{
+					role: "system",
+					content: "You brainstorm distinct content directions for creators. Always respond with valid JSON only.",
+				},
+				{ role: "user", content: prompt },
+			],
+		});
+
+		const raw = typeof aiResponse === "string"
+			? aiResponse
+			: (aiResponse as { response?: string }).response || "";
+
+		const jsonMatch = raw.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			const parsed = JSON.parse(jsonMatch[0]);
+			if (Array.isArray(parsed.directions) && parsed.directions.length >= DIRECTION_OPTIONS_COUNT) {
+				const directions = parsed.directions
+					.slice(0, DIRECTION_OPTIONS_COUNT)
+					.map((d: unknown) => String(d).trim())
+					.filter((d: string) => d.length > 0);
+				if (directions.length === DIRECTION_OPTIONS_COUNT) {
+					return directions;
+				}
+			}
+		}
+
+		console.warn("[ContentIdea] AI direction options response did not contain valid JSON array");
+		return null;
+	} catch (e) {
+		console.warn("[ContentIdea] AI direction options generation failed:", (e as Error).message);
+		return null;
+	}
+}
+
+/**
+ * Build Notion blocks for the "Direction Options" section.
+ */
+function buildDirectionBlocks(directions: string[]): NotionBlock[] {
+	const blocks: NotionBlock[] = [];
+
+	// Blank separator
+	blocks.push({
+		object: "block",
+		type: "paragraph",
+		paragraph: { rich_text: [] },
+	});
+
+	// Section heading
+	blocks.push({
+		object: "block",
+		type: "heading_2",
+		heading_2: {
+			rich_text: [{ type: "text", text: { content: "Direction Options" } }],
+		},
+	});
+
+	for (let i = 0; i < directions.length; i++) {
+		blocks.push({
+			object: "block",
+			type: "paragraph",
+			paragraph: {
+				rich_text: [
+					{ type: "text", text: { content: `Option ${i + 1}: ` }, annotations: { bold: true } },
+					{ type: "text", text: { content: directions[i] } },
+				],
+			},
+		});
+	}
+
+	return blocks;
+}
+
 export interface ContentIdeaOptions {
 	/**
 	 * Content Category to set on the parent Content item. Written as a
@@ -180,7 +299,8 @@ export interface ContentIdeaOptions {
  * 1. Extracts links from the email subject + body
  * 2. Uses Workers AI to generate a concise title and description
  * 3. Creates a single parent Content item in Notion (Status = "Idea")
- * 4. Sends a confirmation reply email linking to the Notion page
+ * 4. Generates 4 distinct direction option pitches and appends them to the page body
+ * 5. Sends a confirmation reply email linking to the Notion page
  *
  * Output-specific sub-pages (video script, blog draft, etc.) are NOT created
  * during ingestion. They are produced later in the pipeline once direction is
@@ -259,6 +379,28 @@ export async function handleContentIdea(
 	}
 
 	console.log(`[${ctx.tag}] Created Content item: ${contentItem.id} — ${contentItem.url}`);
+
+	// Generate direction options and append to the page body
+	try {
+		const directions = await generateDirectionOptions(
+			ctx.env.AI,
+			ideaTitle,
+			ideaDescription,
+			references,
+			options.promptHint,
+			options.category,
+		);
+
+		if (directions) {
+			const directionBlocks = buildDirectionBlocks(directions);
+			await appendBlocksToPage(notionApiKey, contentItem.id, directionBlocks);
+			console.log(`[${ctx.tag}] Appended ${directions.length} direction options to Content item`);
+		} else {
+			console.warn(`[${ctx.tag}] Skipping direction options — AI generation returned no results`);
+		}
+	} catch (e) {
+		console.warn(`[${ctx.tag}] Failed to generate/append direction options:`, (e as Error).message);
+	}
 
 	// Send a confirmation reply email
 	const fromDomain = ctx.mailboxId.split("@")[1];
