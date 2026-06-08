@@ -202,7 +202,7 @@ Title: ${title}
 Description: ${description}
 ${refContext ? `\nReference material:\n${refContext}\n` : ""}
 Rules:
-- Each option must be exactly 2 sentences
+- Each option must be exactly 2 short sentences (max 30 words per option)
 - No generic openers like "This content will..." or "In this piece..."
 - Be specific about what the content covers and who it serves
 - Each option should feel like a genuinely different piece of content
@@ -213,10 +213,11 @@ Respond in JSON format only, no other text: {"directions": ["option 1...", "opti
 			messages: [
 				{
 					role: "system",
-					content: "You brainstorm distinct content directions for creators. Always respond with valid JSON only.",
+					content: "You brainstorm distinct content directions for creators. Always respond with valid JSON only. Keep each direction under 30 words.",
 				},
 				{ role: "user", content: prompt },
 			],
+			max_tokens: 1024,
 		});
 
 		// Workers AI may return the response as a string or as a parsed object.
