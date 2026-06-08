@@ -219,21 +219,28 @@ Respond in JSON format only, no other text: {"directions": ["option 1...", "opti
 			],
 		});
 
-		const raw = typeof aiResponse === "string"
+		// Workers AI may return the response as a string or as a parsed object.
+		const responseBody = typeof aiResponse === "string"
 			? aiResponse
-			: (aiResponse as { response?: string }).response || "";
+			: (aiResponse as { response?: unknown }).response ?? aiResponse;
 
-		const jsonMatch = raw.match(/\{[\s\S]*\}/);
-		if (jsonMatch) {
-			const parsed = JSON.parse(jsonMatch[0]);
-			if (Array.isArray(parsed.directions) && parsed.directions.length >= DIRECTION_OPTIONS_COUNT) {
-				const directions = parsed.directions
-					.slice(0, DIRECTION_OPTIONS_COUNT)
-					.map((d: unknown) => String(d).trim())
-					.filter((d: string) => d.length > 0);
-				if (directions.length === DIRECTION_OPTIONS_COUNT) {
-					return directions;
-				}
+		let parsed: Record<string, unknown> | null = null;
+		if (typeof responseBody === "string") {
+			const jsonMatch = responseBody.match(/\{[\s\S]*\}/);
+			if (jsonMatch) {
+				parsed = JSON.parse(jsonMatch[0]);
+			}
+		} else if (typeof responseBody === "object" && responseBody !== null) {
+			parsed = responseBody as Record<string, unknown>;
+		}
+
+		if (parsed && Array.isArray(parsed.directions) && parsed.directions.length >= DIRECTION_OPTIONS_COUNT) {
+			const directions = (parsed.directions as unknown[])
+				.slice(0, DIRECTION_OPTIONS_COUNT)
+				.map((d: unknown) => String(d).trim())
+				.filter((d: string) => d.length > 0);
+			if (directions.length === DIRECTION_OPTIONS_COUNT) {
+				return directions;
 			}
 		}
 
