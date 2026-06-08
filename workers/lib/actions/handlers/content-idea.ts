@@ -190,13 +190,11 @@ async function generateDirectionOptions(
 			.map((r) => `- ${r.url}: ${r.note}`)
 			.join("\n");
 
-		const formatScope = category
-			? `All directions should be specifically for a ${category} piece of content.`
-			: "Directions can suggest any content format (video, blog post, short, tweet, etc.).";
+		const prompt = `Given the following content idea, generate exactly ${DIRECTION_OPTIONS_COUNT} distinct direction options. Each option is a 2-sentence pitch describing a unique angle for the content.
 
-		const prompt = `Given the following content idea, generate exactly ${DIRECTION_OPTIONS_COUNT} distinct direction options. Each option is a 2-sentence pitch describing a unique angle for the content. The directions should be meaningfully different from each other — different angles, audiences, or scopes, not just rephrasing the same idea.
+Focus on the substance: what is the core takeaway, what angle does it take, and who benefits? Each direction should represent a genuinely different approach — for example, one might be a step-by-step tutorial, another an opinionated take, another a comparison, another an announcement or explainer.
 
-${formatScope}
+Do NOT mention the content format (video, blog, tweet, etc.). The format is already decided. Focus entirely on the topic angle, scope, audience, and what the reader/viewer walks away knowing.
 
 Title: ${title}
 Description: ${description}
@@ -206,6 +204,7 @@ Rules:
 - No generic openers like "This content will..." or "In this piece..."
 - Be specific about what the content covers and who it serves
 - Each option should feel like a genuinely different piece of content
+- Do not reference the format (video, blog, article, post, etc.)
 
 Respond in JSON format only, no other text: {"directions": ["option 1...", "option 2...", "option 3...", "option 4..."]}`;
 
@@ -213,7 +212,7 @@ Respond in JSON format only, no other text: {"directions": ["option 1...", "opti
 			messages: [
 				{
 					role: "system",
-					content: "You brainstorm distinct content directions for creators. Always respond with valid JSON only. Keep each direction under 30 words.",
+					content: "You brainstorm distinct content directions for creators. Always respond with valid JSON only. Keep each direction under 30 words. Never mention the content format (video, blog, article, post, etc.).",
 				},
 				{ role: "user", content: prompt },
 			],
