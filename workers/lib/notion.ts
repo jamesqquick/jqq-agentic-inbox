@@ -44,6 +44,13 @@
 export interface NotionRichText {
 	type: "text";
 	text: { content: string; link?: { url: string } | null };
+	annotations?: {
+		bold?: boolean;
+		italic?: boolean;
+		strikethrough?: boolean;
+		underline?: boolean;
+		code?: boolean;
+	};
 }
 
 export interface NotionTitleProperty {
@@ -606,6 +613,21 @@ export async function createChildPage(
 
 	const response = await notionRequest(apiKey, "POST", "https://api.notion.com/v1/pages", body);
 	return response as NotionCreatePageResponse;
+}
+
+/**
+ * Append blocks to an existing Notion page. Used to add content after the
+ * initial page creation (e.g. direction options generated asynchronously).
+ */
+export async function appendBlocksToPage(
+	apiKey: string,
+	pageId: string,
+	children: NotionBlock[],
+): Promise<void> {
+	if (children.length === 0) return;
+	await notionRequest(apiKey, "PATCH", `https://api.notion.com/v1/blocks/${pageId}/children`, {
+		children,
+	});
 }
 
 /**
