@@ -66,6 +66,10 @@ async function generateLinkNote(
  * Browser session and pre-fetched markdown for the first link to avoid
  * duplicate work (the caller may have already fetched it for title generation).
  *
+ * When `primaryFetchAttempted` is true, the first link is never re-fetched —
+ * `primaryPageMarkdown` is used as-is (a null value means the prior fetch
+ * failed and the link is treated as unavailable).
+ *
  * If `existingBrowser` is provided the caller owns closing it; this function
  * will only close a session it creates itself.
  */
@@ -77,6 +81,7 @@ async function buildContentReferences(
 	ideaBody: string,
 	existingBrowser: BrowserMarkdownSession | null,
 	primaryPageMarkdown: string | null,
+	primaryFetchAttempted: boolean,
 ): Promise<ContentReference[]> {
 	const linksToFetch = links.slice(0, MAX_LINKS_TO_FETCH);
 	if (links.length > linksToFetch.length) {
@@ -96,8 +101,9 @@ async function buildContentReferences(
 		for (let i = 0; i < linksToFetch.length; i++) {
 			const url = linksToFetch[i];
 
-			// Reuse pre-fetched markdown for the first link if available
-			const markdown = (i === 0 && primaryPageMarkdown)
+			// Reuse the already-fetched markdown for the first link instead of
+			// re-fetching it, even if that earlier fetch returned null.
+			const markdown = (i === 0 && primaryFetchAttempted)
 				? primaryPageMarkdown
 				: await browser.fetchMarkdown(url, "ContentIdea");
 
@@ -135,6 +141,11 @@ const MAX_PAGE_CONTENT_FOR_SUMMARY = 4000;
 /**
  * Try to extract a human-readable title from page markdown by looking for the
  * first heading or the first non-empty line.
+ *
+ * Note: the heading branch rarely fires in practice — BrowserMarkdownSession
+ * produces markdown from a <pre> block of escaped text, which seldom contains
+ * Markdown headings. The first-line fallback does most of the work here, so
+ * this is best-effort and only used when AI title generation fails entirely.
  */
 function extractTitleFromMarkdown(markdown: string): string | null {
 	const headingMatch = markdown.match(/^#{1,3}\s+(.+)$/m);
@@ -419,6 +430,7 @@ export async function handleContentIdea(
 	// The same Browser session is reused for building reference notes afterward.
 	let browser: BrowserMarkdownSession | null = null;
 	let primaryPageMarkdown: string | null = null;
+	let primaryFetchAttempted = false;
 	let ideaTitle: string;
 	let ideaDescription: string;
 	let references: ContentReference[];
@@ -427,6 +439,7 @@ export async function handleContentIdea(
 		if (links.length > 0) {
 			try {
 				browser = await BrowserMarkdownSession.create(ctx.env.BROWSER, ctx.env.AI);
+				primaryFetchAttempted = true;
 				primaryPageMarkdown = await browser.fetchMarkdown(links[0], ctx.tag);
 				if (primaryPageMarkdown) {
 					console.log(`[${ctx.tag}] Fetched primary link content: ${primaryPageMarkdown.length} chars`);
@@ -452,7 +465,7 @@ export async function handleContentIdea(
 
 		// Build reference notes, reusing the browser session and pre-fetched markdown
 		references = links.length > 0
-			? await buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput, browser, primaryPageMarkdown)
+			? await buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput, browser, primaryPageMarkdown, primaryFetchAttempted)
 			: [];
 	} finally {
 		if (browser) {
