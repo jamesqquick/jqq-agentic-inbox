@@ -4,7 +4,7 @@ import { createContentItem, appendBlocksToPage } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
-import { BrowserMarkdownSession, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
+import { fetchMarkdown, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
 
 const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
 const MAX_LINKS_TO_FETCH = 5;
@@ -73,40 +73,44 @@ async function buildContentReferences(
 		console.warn(`[${ctx.tag}] Found ${links.length} links; generating notes for first ${linksToFetch.length}`);
 	}
 
-	let browser: BrowserMarkdownSession | null = null;
-
+	// Fetch all URLs in parallel via Browser Run /markdown Quick Action.
+	// Use allSettled so a single unexpected rejection doesn't lose all results.
+	let markdownResults: (string | null)[];
 	try {
-		browser = await BrowserMarkdownSession.create(ctx.env.BROWSER, ctx.env.AI);
-		const summarized: ContentReference[] = [];
-		for (const url of linksToFetch) {
-			const markdown = await browser.fetchMarkdown(url, "ContentIdea");
-			if (!markdown) {
-				summarized.push({ url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." });
-				continue;
-			}
-
-			const note = await generateLinkNote(ctx.env.AI, url, markdown, promptHint, ideaSubject, ideaBody);
-			summarized.push({
-				url,
-				note: note || "Unable to generate notes from the retrieved page content.",
-			});
-		}
-
-		return [
-			...summarized,
-			...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
-		];
+		const settled = await Promise.allSettled(
+			linksToFetch.map((url) => fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea")),
+		);
+		markdownResults = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
 	} catch (e) {
-		console.warn(`[${ctx.tag}] Failed to launch Browser Run session:`, redactUrlsInText((e as Error).message));
+		console.warn(`[${ctx.tag}] Unexpected error during parallel markdown fetches:`, redactUrlsInText((e as Error).message));
 		return links.map((url) => ({
 			url,
-			note: "Unable to generate notes because Browser Run could not start a browser session.",
+			note: "Unable to generate notes because Browser Run could not retrieve readable page content.",
 		}));
-	} finally {
-		if (browser) {
-			await browser.close(ctx.tag);
-		}
 	}
+
+	// Generate notes for each URL (sequentially to avoid AI rate limits)
+	const summarized: ContentReference[] = [];
+	for (let i = 0; i < linksToFetch.length; i++) {
+		const url = linksToFetch[i];
+		const markdown = markdownResults[i];
+
+		if (!markdown) {
+			summarized.push({ url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." });
+			continue;
+		}
+
+		const note = await generateLinkNote(ctx.env.AI, url, markdown, promptHint, ideaSubject, ideaBody);
+		summarized.push({
+			url,
+			note: note || "Unable to generate notes from the retrieved page content.",
+		});
+	}
+
+	return [
+		...summarized,
+		...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
+	];
 }
 
 /**
