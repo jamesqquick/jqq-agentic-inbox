@@ -38,9 +38,11 @@ export async function fetchMarkdown(
 			return null;
 		}
 
-		const body = await response.json<{ success: boolean; result?: string; errors?: { message: string }[] }>();
-		if (!body.success || !body.result?.trim()) {
-			const errorMsg = body.errors?.map((e) => e.message).join("; ") ?? "empty result";
+		const body = await response.json<BrowserRunMarkdownSuccessResponse | BrowserRunErrorResponse>();
+		if (!body.success || !("result" in body) || !body.result?.trim()) {
+			const errorMsg = !body.success && "errors" in body
+				? body.errors.map((e) => e.message).join("; ")
+				: "empty result";
 			console.warn(`[${logPrefix}] Browser Run markdown Quick Action returned no content for ${redactUrlForLog(url)}: ${errorMsg}`);
 			return null;
 		}
@@ -79,14 +81,16 @@ export async function fetchJson<T = Record<string, unknown>>(
 			return null;
 		}
 
-		const body = await response.json<{ success: boolean; result?: T; errors?: { message: string }[] }>();
-		if (!body.success || !body.result) {
-			const errorMsg = body.errors?.map((e) => e.message).join("; ") ?? "empty result";
+		const body = await response.json<BrowserRunJsonSuccessResponse | BrowserRunErrorResponse>();
+		if (!body.success || !("result" in body) || !body.result) {
+			const errorMsg = !body.success && "errors" in body
+				? body.errors.map((e) => e.message).join("; ")
+				: "empty result";
 			console.warn(`[${logPrefix}] Browser Run json Quick Action returned no data for ${redactUrlForLog(url)}: ${errorMsg}`);
 			return null;
 		}
 
-		return body.result;
+		return body.result as T;
 	} catch (e) {
 		console.warn(`[${logPrefix}] Browser Run json Quick Action error for ${redactUrlForLog(url)}:`, redactUrlsInText((e as Error).message));
 		return null;

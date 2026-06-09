@@ -73,10 +73,21 @@ async function buildContentReferences(
 		console.warn(`[${ctx.tag}] Found ${links.length} links; generating notes for first ${linksToFetch.length}`);
 	}
 
-	// Fetch all URLs in parallel via Browser Run /markdown Quick Action
-	const markdownResults = await Promise.all(
-		linksToFetch.map((url) => fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea")),
-	);
+	// Fetch all URLs in parallel via Browser Run /markdown Quick Action.
+	// Use allSettled so a single unexpected rejection doesn't lose all results.
+	let markdownResults: (string | null)[];
+	try {
+		const settled = await Promise.allSettled(
+			linksToFetch.map((url) => fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea")),
+		);
+		markdownResults = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
+	} catch (e) {
+		console.warn(`[${ctx.tag}] Unexpected error during parallel markdown fetches:`, redactUrlsInText((e as Error).message));
+		return links.map((url) => ({
+			url,
+			note: "Unable to generate notes because Browser Run could not retrieve readable page content.",
+		}));
+	}
 
 	// Generate notes for each URL (sequentially to avoid AI rate limits)
 	const summarized: ContentReference[] = [];
