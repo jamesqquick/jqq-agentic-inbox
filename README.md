@@ -53,9 +53,11 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 ## Getting Started
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
+
+> This project uses [pnpm](https://pnpm.io). Install it with `corepack enable` (the version is pinned via the `packageManager` field in `package.json`).
 
 ### Configuration
 
@@ -67,7 +69,7 @@ Optional content idea link notes use the [Browser Run](https://developers.cloudf
 ### Deploy
 
 ```bash
-npm run deploy
+pnpm run deploy
 ```
 
 ## Prerequisites

@@ -13,10 +13,15 @@ the PR rather than skipping silently.
 ### How to run
 
 ```bash
-npm test          # run all unit tests once
-npm run test:watch # watch mode while developing
-npm run typecheck  # type-check the whole project
+pnpm test           # run all unit tests once
+pnpm run test:watch # watch mode while developing
+pnpm run typecheck  # type-check the whole project
 ```
+
+> This project uses [pnpm](https://pnpm.io) (pinned via the `packageManager`
+> field in `package.json`). Use pnpm, not npm — the npm lockfile is not
+> committed. Note that `pnpm deploy` is a reserved pnpm command, so the deploy
+> script must be run as `pnpm run deploy`.
 
 ### Conventions
 
@@ -53,6 +58,6 @@ database before merging changes to that flow.
 
 ## Definition of done
 
-Don't call a task complete until `npm run typecheck` and `npm test` both pass.
+Don't call a task complete until `pnpm run typecheck` and `pnpm test` both pass.
 There are some pre-existing `NOTION_API_KEY`-on-`Env` type errors unrelated to
 most changes; don't let your change add new ones.

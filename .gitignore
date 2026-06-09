@@ -18,3 +18,4 @@ skills-lock.json
 .DS_Store
 worker-configuration.d.ts
 tmp/
+package-lock.json
