@@ -5,6 +5,7 @@ import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
 import { fetchMarkdown, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
+import { generateIdeaSummary } from "../title";
 
 const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
 const MAX_LINKS_TO_FETCH = 5;
@@ -67,6 +68,8 @@ async function buildContentReferences(
 	promptHint: string,
 	ideaSubject: string,
 	ideaBody: string,
+	primaryPageMarkdown: string | null,
+	primaryFetchAttempted: boolean,
 ): Promise<ContentReference[]> {
 	const linksToFetch = links.slice(0, MAX_LINKS_TO_FETCH);
 	if (links.length > linksToFetch.length) {
@@ -75,10 +78,16 @@ async function buildContentReferences(
 
 	// Fetch all URLs in parallel via Browser Run /markdown Quick Action.
 	// Use allSettled so a single unexpected rejection doesn't lose all results.
+	// The first link may already have been fetched by the caller for title
+	// generation; reuse that result instead of fetching it again.
 	let markdownResults: (string | null)[];
 	try {
 		const settled = await Promise.allSettled(
-			linksToFetch.map((url) => fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea")),
+			linksToFetch.map((url, i) =>
+				i === 0 && primaryFetchAttempted
+					? Promise.resolve(primaryPageMarkdown)
+					: fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea"),
+			),
 		);
 		markdownResults = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
 	} catch (e) {
@@ -111,61 +120,6 @@ async function buildContentReferences(
 		...summarized,
 		...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
 	];
-}
-
-/**
- * Use Workers AI to generate a concise title and description from the raw
- * email subject and body. Falls back to the raw subject if AI fails.
- */
-async function generateIdeaSummary(
-	ai: any,
-	subject: string,
-	body: string,
-	promptHint: string,
-): Promise<{ title: string; description: string }> {
-	try {
-		const prompt = `Given the following idea submitted via email (this is ${promptHint}), generate:
-1. A short title (max 10 words, concise and actionable)
-2. A brief description (1-2 sentences summarizing the core idea)
-
-Subject: ${subject}
-${body ? `Body: ${body}` : ""}
-
-Respond in JSON format only, no other text: {"title": "...", "description": "..."}`;
-
-		const aiResponse = await ai.run("@cf/meta/llama-3.1-8b-instruct-fast" as any, {
-			messages: [
-				{
-					role: "system",
-					content: "You generate concise titles and descriptions for ideas. Always respond with valid JSON only.",
-				},
-				{ role: "user", content: prompt },
-			],
-		});
-
-		const raw = typeof aiResponse === "string"
-			? aiResponse
-			: (aiResponse as { response?: string }).response || "";
-
-		const jsonMatch = raw.match(/\{[\s\S]*\}/);
-		if (jsonMatch) {
-			const parsed = JSON.parse(jsonMatch[0]);
-			if (parsed.title && parsed.description) {
-				console.log(`[ContentIdea] AI generated title: "${parsed.title}"`);
-				return { title: parsed.title, description: parsed.description };
-			}
-		}
-
-		console.warn("[ContentIdea] AI response did not contain valid JSON, using raw input");
-	} catch (e) {
-		console.warn("[ContentIdea] AI summary generation failed, using raw input:", (e as Error).message);
-	}
-
-	// Fallback: use subject if available, otherwise truncate body for title
-	const fallbackTitle = subject && subject !== "(see body)"
-		? subject
-		: body.substring(0, 80).trim() || "Untitled idea";
-	return { title: fallbackTitle, description: body || "" };
 }
 
 const DIRECTION_OPTIONS_COUNT = 4;
@@ -355,18 +309,37 @@ export async function handleContentIdea(
 	const logLinks = links.map(redactUrlForLog);
 	console.log(`[${ctx.tag}] Extracted ${links.length} link(s) from subject+body${logLinks.length > 0 ? `: ${logLinks.join(", ")}` : ""}`);
 
-	// Generate a concise title and description with AI
 	// Use body as the primary input if subject is empty
 	const aiSubjectInput = hasSubject ? rawSubject : "(see body)";
 	const aiBodyInput = ctx.body;
+
+	// Fetch the primary link's page content first so it can inform the title.
+	// This is reused for the references section, so the first link is not
+	// fetched twice. fetchMarkdown returns null (never throws) on failure.
+	let primaryPageMarkdown: string | null = null;
+	let primaryFetchAttempted = false;
+	if (links.length > 0) {
+		primaryFetchAttempted = true;
+		primaryPageMarkdown = await fetchMarkdown(ctx.env.BROWSER, links[0], ctx.tag);
+		if (primaryPageMarkdown) {
+			console.log(`[${ctx.tag}] Fetched primary link content: ${primaryPageMarkdown.length} chars`);
+		} else {
+			console.warn(`[${ctx.tag}] Browser Run returned no content for primary link ${redactUrlForLog(links[0])}`);
+		}
+	}
+
+	// Generate references and the title/description concurrently. The title
+	// generation now receives the fetched page content so URL-only emails still
+	// get a human-readable title.
 	const referencesPromise = links.length > 0
-		? buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput)
+		? buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput, primaryPageMarkdown, primaryFetchAttempted)
 		: Promise.resolve([]);
 	const summaryPromise = generateIdeaSummary(
 		ctx.env.AI,
 		aiSubjectInput,
 		aiBodyInput,
 		options.promptHint,
+		primaryPageMarkdown,
 	);
 	const [references, { title: ideaTitle, description: ideaDescription }] = await Promise.all([
 		referencesPromise,
