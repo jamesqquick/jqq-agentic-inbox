@@ -4,7 +4,7 @@ import { createContentItem, appendBlocksToPage } from "../../notion";
 import { sendEmail } from "../../../email-sender";
 import { getMailboxStub, generateMessageId, escapeHtml } from "../../email-helpers";
 import { Folders } from "../../../../shared/folders";
-import { BrowserMarkdownSession, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
+import { fetchMarkdown, redactUrlForLog, redactUrlsInText } from "../../browser-markdown";
 import { generateIdeaSummary } from "../title";
 
 const URL_REGEX = /https?:\/\/[^\s<>"]+/g;
@@ -62,25 +62,12 @@ async function generateLinkNote(
 	}
 }
 
-/**
- * Build reference notes for extracted links. Accepts an optional existing
- * Browser session and pre-fetched markdown for the first link to avoid
- * duplicate work (the caller may have already fetched it for title generation).
- *
- * When `primaryFetchAttempted` is true, the first link is never re-fetched —
- * `primaryPageMarkdown` is used as-is (a null value means the prior fetch
- * failed and the link is treated as unavailable).
- *
- * If `existingBrowser` is provided the caller owns closing it; this function
- * will only close a session it creates itself.
- */
 async function buildContentReferences(
 	ctx: ActionContext,
 	links: string[],
 	promptHint: string,
 	ideaSubject: string,
 	ideaBody: string,
-	existingBrowser: BrowserMarkdownSession | null,
 	primaryPageMarkdown: string | null,
 	primaryFetchAttempted: boolean,
 ): Promise<ContentReference[]> {
@@ -89,52 +76,50 @@ async function buildContentReferences(
 		console.warn(`[${ctx.tag}] Found ${links.length} links; generating notes for first ${linksToFetch.length}`);
 	}
 
-	let browser = existingBrowser;
-	let ownsBrowser = false;
-
+	// Fetch all URLs in parallel via Browser Run /markdown Quick Action.
+	// Use allSettled so a single unexpected rejection doesn't lose all results.
+	// The first link may already have been fetched by the caller for title
+	// generation; reuse that result instead of fetching it again.
+	let markdownResults: (string | null)[];
 	try {
-		if (!browser) {
-			browser = await BrowserMarkdownSession.create(ctx.env.BROWSER, ctx.env.AI);
-			ownsBrowser = true;
-		}
-
-		const summarized: ContentReference[] = [];
-		for (let i = 0; i < linksToFetch.length; i++) {
-			const url = linksToFetch[i];
-
-			// Reuse the already-fetched markdown for the first link instead of
-			// re-fetching it, even if that earlier fetch returned null.
-			const markdown = (i === 0 && primaryFetchAttempted)
-				? primaryPageMarkdown
-				: await browser.fetchMarkdown(url, "ContentIdea");
-
-			if (!markdown) {
-				summarized.push({ url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." });
-				continue;
-			}
-
-			const note = await generateLinkNote(ctx.env.AI, url, markdown, promptHint, ideaSubject, ideaBody);
-			summarized.push({
-				url,
-				note: note || "Unable to generate notes from the retrieved page content.",
-			});
-		}
-
-		return [
-			...summarized,
-			...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
-		];
+		const settled = await Promise.allSettled(
+			linksToFetch.map((url, i) =>
+				i === 0 && primaryFetchAttempted
+					? Promise.resolve(primaryPageMarkdown)
+					: fetchMarkdown(ctx.env.BROWSER, url, "ContentIdea"),
+			),
+		);
+		markdownResults = settled.map((r) => (r.status === "fulfilled" ? r.value : null));
 	} catch (e) {
-		console.warn(`[${ctx.tag}] Failed to launch Browser Run session:`, redactUrlsInText((e as Error).message));
+		console.warn(`[${ctx.tag}] Unexpected error during parallel markdown fetches:`, redactUrlsInText((e as Error).message));
 		return links.map((url) => ({
 			url,
-			note: "Unable to generate notes because Browser Run could not start a browser session.",
+			note: "Unable to generate notes because Browser Run could not retrieve readable page content.",
 		}));
-	} finally {
-		if (ownsBrowser && browser) {
-			await browser.close(ctx.tag);
-		}
 	}
+
+	// Generate notes for each URL (sequentially to avoid AI rate limits)
+	const summarized: ContentReference[] = [];
+	for (let i = 0; i < linksToFetch.length; i++) {
+		const url = linksToFetch[i];
+		const markdown = markdownResults[i];
+
+		if (!markdown) {
+			summarized.push({ url, note: "Unable to generate notes because Browser Run could not retrieve readable page content." });
+			continue;
+		}
+
+		const note = await generateLinkNote(ctx.env.AI, url, markdown, promptHint, ideaSubject, ideaBody);
+		summarized.push({
+			url,
+			note: note || "Unable to generate notes from the retrieved page content.",
+		});
+	}
+
+	return [
+		...summarized,
+		...links.slice(MAX_LINKS_TO_FETCH).map((url) => ({ url })),
+	];
 }
 
 const DIRECTION_OPTIONS_COUNT = 4;
@@ -280,13 +265,10 @@ export interface ContentIdeaOptions {
  * Shared handler for content idea actions ([IDEA], [VIDEO], [BLOG], [TWITTER], etc.).
  *
  * 1. Extracts links from the email subject + body
- * 2. Fetches the primary link's page content via Browser Rendering
- * 3. Uses Workers AI to generate a concise title and description, informed by the
- *    fetched page content so that URL-only emails still get human-readable titles
- * 4. Builds reference notes for all links, reusing the browser session
- * 5. Creates a single parent Content item in Notion (Status = "Idea")
- * 6. Generates 4 distinct direction option pitches and appends them to the page body
- * 7. Sends a confirmation reply email linking to the Notion page
+ * 2. Uses Workers AI to generate a concise title and description
+ * 3. Creates a single parent Content item in Notion (Status = "Idea")
+ * 4. Generates 4 distinct direction option pitches and appends them to the page body
+ * 5. Sends a confirmation reply email linking to the Notion page
  *
  * Output-specific sub-pages (video script, blog draft, etc.) are NOT created
  * during ingestion. They are produced later in the pipeline once direction is
@@ -332,51 +314,38 @@ export async function handleContentIdea(
 	const aiBodyInput = ctx.body;
 
 	// Fetch the primary link's page content first so it can inform the title.
-	// The same Browser session is reused for building reference notes afterward.
-	let browser: BrowserMarkdownSession | null = null;
+	// This is reused for the references section, so the first link is not
+	// fetched twice. fetchMarkdown returns null (never throws) on failure.
 	let primaryPageMarkdown: string | null = null;
 	let primaryFetchAttempted = false;
-	let ideaTitle: string;
-	let ideaDescription: string;
-	let references: ContentReference[];
-
-	try {
-		if (links.length > 0) {
-			try {
-				browser = await BrowserMarkdownSession.create(ctx.env.BROWSER, ctx.env.AI);
-				primaryFetchAttempted = true;
-				primaryPageMarkdown = await browser.fetchMarkdown(links[0], ctx.tag);
-				if (primaryPageMarkdown) {
-					console.log(`[${ctx.tag}] Fetched primary link content: ${primaryPageMarkdown.length} chars`);
-				} else {
-					console.warn(`[${ctx.tag}] Browser Run returned no content for primary link ${redactUrlForLog(links[0])}`);
-				}
-			} catch (e) {
-				console.warn(`[${ctx.tag}] Failed to fetch primary link content:`, redactUrlsInText((e as Error).message));
-			}
-		}
-
-		// Generate title and description with AI, now including fetched page content
-		const summary = await generateIdeaSummary(
-			ctx.env.AI,
-			aiSubjectInput,
-			aiBodyInput,
-			options.promptHint,
-			primaryPageMarkdown,
-		);
-		ideaTitle = summary.title;
-		ideaDescription = summary.description;
-		console.log(`[${ctx.tag}] AI generated — title: "${ideaTitle}", description: ${ideaDescription ? `${ideaDescription.length} chars` : "none"}`);
-
-		// Build reference notes, reusing the browser session and pre-fetched markdown
-		references = links.length > 0
-			? await buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput, browser, primaryPageMarkdown, primaryFetchAttempted)
-			: [];
-	} finally {
-		if (browser) {
-			await browser.close(ctx.tag);
+	if (links.length > 0) {
+		primaryFetchAttempted = true;
+		primaryPageMarkdown = await fetchMarkdown(ctx.env.BROWSER, links[0], ctx.tag);
+		if (primaryPageMarkdown) {
+			console.log(`[${ctx.tag}] Fetched primary link content: ${primaryPageMarkdown.length} chars`);
+		} else {
+			console.warn(`[${ctx.tag}] Browser Run returned no content for primary link ${redactUrlForLog(links[0])}`);
 		}
 	}
+
+	// Generate references and the title/description concurrently. The title
+	// generation now receives the fetched page content so URL-only emails still
+	// get a human-readable title.
+	const referencesPromise = links.length > 0
+		? buildContentReferences(ctx, links, options.promptHint, aiSubjectInput, aiBodyInput, primaryPageMarkdown, primaryFetchAttempted)
+		: Promise.resolve([]);
+	const summaryPromise = generateIdeaSummary(
+		ctx.env.AI,
+		aiSubjectInput,
+		aiBodyInput,
+		options.promptHint,
+		primaryPageMarkdown,
+	);
+	const [references, { title: ideaTitle, description: ideaDescription }] = await Promise.all([
+		referencesPromise,
+		summaryPromise,
+	]);
+	console.log(`[${ctx.tag}] AI generated — title: "${ideaTitle}", description: ${ideaDescription ? `${ideaDescription.length} chars` : "none"}`);
 
 	// Create the parent Content item
 	const notionParams = {

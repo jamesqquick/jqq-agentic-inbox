@@ -89,7 +89,6 @@
 		"@tiptap/extension-text": "3.20.2"
 	},
 	"devDependencies": {
-		"@cloudflare/puppeteer": "^1.1.0",
 		"@cloudflare/vite-plugin": "^1.0.12",
 		"@cloudflare/workers-types": "^4.20251128.0",
 		"@react-router/dev": "^7.5.3",
