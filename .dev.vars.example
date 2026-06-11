@@ -10,3 +10,8 @@ NOTION_API_KEY=secret_xxx
 
 # CFP tracking database ID (required for [CFP] email action).
 # CFP_DB_ID is set in wrangler.jsonc vars, but can be overridden here.
+
+# Sent.dm SMS (morning digest text notification).
+# Get your API key from https://app.sent.dm. SENT_TEMPLATE_ID and
+# DIGEST_SMS_RECIPIENT are set in wrangler.jsonc vars but can be overridden here.
+SENT_API_KEY=replace-me

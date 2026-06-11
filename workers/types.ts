@@ -5,4 +5,7 @@
 export interface Env extends Cloudflare.Env {
 	POLICY_AUD: string;
 	TEAM_DOMAIN: string;
+	// Sent.dm SMS (morning digest text notification). API key is a secret;
+	// SENT_TEMPLATE_ID and DIGEST_SMS_RECIPIENT come from wrangler.jsonc vars.
+	SENT_API_KEY: string;
 }
