@@ -21,6 +21,15 @@
     // Leave empty to disable SMS; fill with the approved template ID and an E.164 phone to enable.
     "SENT_TEMPLATE_ID": "",
     "DIGEST_SMS_RECIPIENT": "",
+    // Set to "true" to route all SMS through Sent.dm sandbox mode (validates without delivering).
+    // Leave as "false" (or unset) in production to send real messages.
+    "SENT_SANDBOX": "false",
+    // Inbound SMS webhook. SENT_WEBHOOK_SECRET must be defined as a secret
+    // (wrangler secret put SENT_WEBHOOK_SECRET) — it is the whsec_... signing secret
+    // from the sent.dm dashboard for the /webhooks/sms endpoint.
+    // SENT_SMS_MAILBOX_ID is the email address of the mailbox that SMS-triggered actions
+    // will be associated with (confirmation emails go here).
+    "SENT_SMS_MAILBOX_ID": "",
   },
   "send_email": [
     {

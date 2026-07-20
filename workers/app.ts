@@ -9,6 +9,7 @@ import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
 import { runMorningDigest } from "./lib/morning-digest";
+import { receiveSms } from "./lib/sms-webhook";
 import type { Env } from "./types";
 
 export { MailboxDO } from "./durableObject";
@@ -42,6 +43,13 @@ function getAccessUrls(teamDomain: string) {
 
 // Main app that wraps the API and adds React Router fallback
 const app = new Hono<{ Bindings: Env }>();
+
+// Inbound SMS webhook from sent.dm — must be registered BEFORE the CF Access middleware
+// because sent.dm cannot pass a CF Access JWT. The endpoint is secured by HMAC-SHA256
+// signature verification inside receiveSms() instead.
+app.post("/webhooks/sms", async (c) => {
+	return receiveSms(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+});
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {
