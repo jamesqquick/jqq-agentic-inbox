@@ -10,6 +10,7 @@
 import type { Env } from "../types";
 import { queryContentPipeline, type NotionQueryResponse } from "./notion";
 import { sendEmail } from "../email-sender";
+import { sendSms } from "./sent-sms";
 import { escapeHtml } from "./email-helpers";
 
 const DIGEST_RECIPIENT = "me@jamesqquick.com";
@@ -116,5 +117,22 @@ export async function runMorningDigest(env: Env): Promise<void> {
 		console.log(`[Digest] Sent digest to ${DIGEST_RECIPIENT}, messageId=${result.messageId}`);
 	} catch (e) {
 		console.error("[Digest] Send failed:", (e as Error).message);
+	}
+
+	// Additive SMS nudge via Sent.dm. Never blocks the email above.
+	if (!env.SENT_API_KEY || !env.SENT_TEMPLATE_ID || !env.DIGEST_SMS_RECIPIENT) {
+		console.log("[Digest] Sent SMS not configured, skipping text notification");
+		return;
+	}
+
+	try {
+		const sms = await sendSms(env, {
+			to: env.DIGEST_SMS_RECIPIENT,
+			templateId: env.SENT_TEMPLATE_ID,
+			parameters: { count: String(items.length) },
+		});
+		console.log(`[Digest] Sent SMS to ${env.DIGEST_SMS_RECIPIENT}, messageId=${sms.messageId}`);
+	} catch (e) {
+		console.error("[Digest] SMS send failed:", (e as Error).message);
 	}
 }

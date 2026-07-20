@@ -10,3 +10,16 @@ NOTION_API_KEY=secret_xxx
 
 # CFP tracking database ID (required for [CFP] email action).
 # CFP_DB_ID is set in wrangler.jsonc vars, but can be overridden here.
+
+# Sent.dm SMS (morning digest text notification).
+# Get your API key from https://app.sent.dm. SENT_TEMPLATE_ID and
+# DIGEST_SMS_RECIPIENT are set in wrangler.jsonc vars but can be overridden here.
+SENT_API_KEY=replace-me
+
+# Inbound SMS webhook (POST /webhooks/sms).
+# SENT_WEBHOOK_SECRET: the whsec_... signing secret shown in the sent.dm dashboard
+# under Webhooks → your endpoint → Signing Secret.
+# SENT_SMS_MAILBOX_ID: the email address of the mailbox that SMS-triggered actions
+# will be associated with — confirmation emails go here.
+SENT_WEBHOOK_SECRET=whsec_replace-me
+SENT_SMS_MAILBOX_ID=you@yourdomain.com
