@@ -30,6 +30,10 @@
     // SENT_SMS_MAILBOX_ID is the email address of the mailbox that SMS-triggered actions
     // will be associated with (confirmation emails go here).
     "SENT_SMS_MAILBOX_ID": "james.q.quick@gmail.com",
+    // REPLY_FROM_ADDRESS is the verified Cloudflare-sender domain address used as the
+    // From: on all outbound confirmation/reply emails. Must be on a domain verified in
+    // your Cloudflare account — gmail.com and other external domains are not allowed.
+    "REPLY_FROM_ADDRESS": "agent@jamesqquick.com",
   },
   "send_email": [
     {

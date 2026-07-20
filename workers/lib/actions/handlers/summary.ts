@@ -135,7 +135,7 @@ export const handleSummary: ActionHandler = async (ctx: ActionContext) => {
 		thread_id: ctx.emailId,
 		message_id: outgoingMessageId,
 		raw_headers: JSON.stringify([
-			{ key: "from", value: ctx.mailboxId },
+			{ key: "from", value: ctx.env.REPLY_FROM_ADDRESS },
 			{ key: "to", value: ctx.sender },
 			{ key: "subject", value: replySubject },
 			{ key: "date", value: new Date().toISOString() },
@@ -148,7 +148,7 @@ export const handleSummary: ActionHandler = async (ctx: ActionContext) => {
 	// Send the actual email
 	await sendEmail(ctx.env.EMAIL, {
 		to: ctx.sender,
-		from: ctx.mailboxId,
+		from: ctx.env.REPLY_FROM_ADDRESS,
 		subject: replySubject,
 		text: textBody,
 		html: htmlBody,

@@ -343,7 +343,7 @@ Rules:
 		thread_id: ctx.emailId,
 		message_id: outgoingMessageId,
 		raw_headers: JSON.stringify([
-			{ key: "from", value: ctx.mailboxId },
+			{ key: "from", value: ctx.env.REPLY_FROM_ADDRESS },
 			{ key: "to", value: ctx.sender },
 			{ key: "subject", value: replySubject },
 			{ key: "date", value: new Date().toISOString() },
@@ -355,7 +355,7 @@ Rules:
 
 	await sendEmail(ctx.env.EMAIL, {
 		to: ctx.sender,
-		from: ctx.mailboxId,
+		from: ctx.env.REPLY_FROM_ADDRESS,
 		subject: replySubject,
 		text: textBody,
 		html: htmlBody,
