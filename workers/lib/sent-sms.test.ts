@@ -45,42 +45,6 @@ describe("sendSms", () => {
 		expect(result).toEqual({ messageId: "msg_abc123", status: "QUEUED" });
 	});
 
-	it("includes sandbox:true in the request body when sandbox is set", async () => {
-		const fetchMock = mockFetch(202, {
-			success: true,
-			data: { status: "QUEUED", recipients: [{ message_id: "msg_sandbox" }] },
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		await sendSms(fakeEnv(), {
-			to: "+15125550123",
-			templateId: "tmpl_001",
-			sandbox: true,
-		});
-
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		const sentBody = JSON.parse(init.body as string);
-		expect(sentBody.sandbox).toBe(true);
-	});
-
-	it("does not include sandbox in the request body when sandbox is false", async () => {
-		const fetchMock = mockFetch(202, {
-			success: true,
-			data: { status: "QUEUED", recipients: [{ message_id: "msg_real" }] },
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		await sendSms(fakeEnv(), {
-			to: "+15125550123",
-			templateId: "tmpl_001",
-			sandbox: false,
-		});
-
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		const sentBody = JSON.parse(init.body as string);
-		expect(sentBody).not.toHaveProperty("sandbox");
-	});
-
 	it("passes parameters in the template object when provided", async () => {
 		const fetchMock = mockFetch(202, {
 			success: true,

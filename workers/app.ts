@@ -58,6 +58,12 @@ app.use("*", async (c, next) => {
 		return next();
 	}
 
+	// Skip CF Access JWT check for the SMS webhook — it is secured by HMAC-SHA256
+	// signature verification inside receiveSms() instead.
+	if (c.req.path === "/webhooks/sms") {
+		return next();
+	}
+
 	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
 
 	// Fail closed in production if Access is not configured.
