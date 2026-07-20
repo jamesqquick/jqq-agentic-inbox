@@ -1,0 +1,23 @@
+workers/app.ts
+  s_bb1bc527edf616::t_151c383394f60b 12,47-53
+workers/types.ts
+  s_bb1bc527edf616::t_7257f3c2c10270 8-10,12-15
+wrangler.jsonc
+  s_bb1bc527edf616::t_28fb29e0d658c3 24-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2c90374a758e024727d578dd90df8e691319697d",
+  "prompts": {},
+  "sessions": {
+    "s_bb1bc527edf616": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_07f70669affe05bRntwCytnyfF",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
