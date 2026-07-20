@@ -1,0 +1,27 @@
+workers/lib/actions/handlers/cfp.ts
+  s_802a2b1478ab98::t_c86e0dc44e4e6b 492,504
+workers/lib/actions/handlers/content-idea.ts
+  s_802a2b1478ab98::t_21c28efa745813 437,449
+workers/lib/actions/handlers/resource.ts
+  s_802a2b1478ab98::t_65be84a6d226a9 346,358
+workers/lib/actions/handlers/summary.ts
+  s_802a2b1478ab98::t_67e302a637e106 138,151
+wrangler.jsonc
+  s_802a2b1478ab98::t_b607d6e7220868 33-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "388024d058a5667726457b506e2ac2919c4f708e",
+  "prompts": {},
+  "sessions": {
+    "s_802a2b1478ab98": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_07ee34755ffe45zmR4hjIgOdMG",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
