@@ -67,6 +67,7 @@ function renderHtmlBody(items: DigestItem[]): string {
  * email a summary of up to MAX_ITEMS titles (linked) if any exist.
  */
 export async function runMorningDigest(env: Env): Promise<void> {
+	console.log("[Digest] Starting morning digest run");
 	const apiKey = env.NOTION_API_KEY;
 	if (!apiKey) {
 		console.error("[Digest] NOTION_API_KEY is not configured, skipping");
