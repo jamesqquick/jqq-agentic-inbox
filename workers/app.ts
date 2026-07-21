@@ -144,6 +144,7 @@ export default {
 		env: Env,
 		ctx: ExecutionContext,
 	) {
+		console.log("[Cron] Morning digest triggered");
 		ctx.waitUntil(runMorningDigest(env));
 	},
 };

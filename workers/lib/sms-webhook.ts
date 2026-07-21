@@ -190,6 +190,8 @@ export async function receiveSms(
 	const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
 	const signature = request.headers.get("x-webhook-signature") ?? "";
 
+	console.log(`[SmsWebhook] Webhook received — webhookId: ${webhookId}`);
+
 	if (!webhookId || !timestamp || !signature) {
 		return new Response("Missing webhook headers", { status: 401 });
 	}
@@ -203,9 +205,11 @@ export async function receiveSms(
 	});
 
 	if (!valid) {
-		console.warn("[SmsWebhook] Signature verification failed");
+		console.warn(`[SmsWebhook] Signature verification failed — webhookId: ${webhookId}`);
 		return new Response("Invalid signature", { status: 401 });
 	}
+
+	console.log(`[SmsWebhook] Signature verified — webhookId: ${webhookId}`);
 
 	let event: SentWebhookEvent;
 	try {
@@ -216,6 +220,7 @@ export async function receiveSms(
 
 	// Only act on inbound message events; acknowledge everything else silently.
 	if (event.field !== "message" || event.event !== "message.received") {
+		console.log(`[SmsWebhook] Ignoring event — field: ${event.field}, event: ${event.event ?? "(none)"}`);
 		return new Response("OK", { status: 200 });
 	}
 

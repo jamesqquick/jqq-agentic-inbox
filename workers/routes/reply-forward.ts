@@ -27,6 +27,9 @@ export async function handleReplyEmail(c: AppContext) {
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
 
+	const toLogStr = Array.isArray(to) ? to.join(", ") : to;
+	console.log(`[Reply] Initiating reply — mailboxId: ${mailboxId}, emailId: ${id}, to: ${toLogStr}, subject: "${subject}"`);
+
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
 
@@ -85,6 +88,8 @@ export async function handleReplyEmail(c: AppContext) {
 		attachmentData,
 	);
 
+	console.log(`[Reply] Reply stored — emailId: ${messageId}, threadId: ${thread_id}`);
+
 	await stub.markThreadRead(thread_id);
 
 	c.executionCtx.waitUntil(
@@ -117,6 +122,9 @@ export async function handleForwardEmail(c: AppContext) {
 	const id = c.req.param("id") ?? "";
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+
+	const toLogStr = Array.isArray(to) ? to.join(", ") : to;
+	console.log(`[Forward] Initiating forward — mailboxId: ${mailboxId}, originalEmailId: ${id}, to: ${toLogStr}, subject: "${subject}"`);
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -172,6 +180,8 @@ export async function handleForwardEmail(c: AppContext) {
 		},
 		attachmentData,
 	);
+
+	console.log(`[Forward] Forward stored — emailId: ${messageId}`);
 
 	c.executionCtx.waitUntil(
 		sendEmail(c.env.EMAIL, {
