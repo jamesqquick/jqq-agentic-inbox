@@ -1,20 +1,25 @@
 /**
- * SMS sending via the Sent.dm REST API (https://docs.sent.dm).
+ * SMS sending via the Sent.dm TypeScript SDK (@sentdm/sentdm).
  *
- * Sent is template-based: you send to E.164 phone numbers referencing an
- * approved template ID plus parameters. Free-form text is not supported
- * outside a two-way conversation window.
+ * Sent is channel-agnostic: one API call routes to SMS, WhatsApp, or RCS
+ * based on what's available and performs best for that recipient. Sent handles
+ * carrier routing, formatting, fallbacks, and compliance — the code here stays
+ * the same regardless of which channel delivers.
  *
- * Endpoint: POST https://api.sent.dm/v3/messages  (auth via x-api-key header)
+ * Messages are template-based: create an approved template in the Sent dashboard,
+ * then reference it by ID with your parameter values.
+ *
+ * Docs: https://docs.sent.dm/sdks/typescript
  */
+import SentDm from "@sentdm/sentdm";
 import type { Env } from "../types";
-
-const SENT_API_URL = "https://api.sent.dm/v3/messages";
 
 export interface SendSmsParams {
 	to: string; // E.164, e.g. "+15125550123"
 	templateId: string;
 	parameters?: Record<string, string>;
+	/** When true, validates the request against the Sent.dm API without delivering a real message. */
+	sandbox?: boolean;
 }
 
 export class SentSmsError extends Error {
@@ -28,54 +33,47 @@ export class SentSmsError extends Error {
 	}
 }
 
-interface SentResponse {
-	success: boolean;
-	data?: { status?: string; recipients?: Array<{ message_id?: string }> };
-	error?: { code?: string; message?: string } | null;
-}
-
 /**
- * Send a templated SMS via Sent.dm. Forces the `sms` channel.
+ * Send a templated message via Sent.dm.
  *
- * @param env     - Worker env (reads SENT_API_KEY)
- * @param params  - Recipient, template ID, and template parameters
+ * Uses multi-channel routing — Sent selects SMS, WhatsApp, or RCS based on
+ * what's available for the recipient. Sandbox mode validates without delivering.
+ *
+ * @param env     - Worker env (reads SENT_API_KEY and SENT_SANDBOX)
+ * @param params  - Recipient, template ID, template parameters, and optional sandbox flag
  * @returns The Sent message ID and queue status
- * @throws SentSmsError on non-2xx responses (carries Sent's error code/message)
+ * @throws SentSmsError on API errors
  */
 export async function sendSms(
 	env: Env,
 	params: SendSmsParams,
 ): Promise<{ messageId: string | undefined; status: string | undefined }> {
-	const body = {
-		to: [params.to],
-		template: {
-			id: params.templateId,
-			...(params.parameters ? { parameters: params.parameters } : {}),
-		},
-		channel: ["sms"],
-	};
+	const client = new SentDm({ apiKey: env.SENT_API_KEY });
+	const sandbox = params.sandbox ?? (env.SENT_SANDBOX as string) === "true";
 
-	console.log(`[SentSMS] Sending — to: ${params.to}, template: ${params.templateId}`);
+	console.log(
+		`[SentSMS] Sending — to: ${params.to}, template: ${params.templateId}${sandbox ? " (sandbox)" : ""}`,
+	);
 
-	const res = await fetch(SENT_API_URL, {
-		method: "POST",
-		headers: {
-			"x-api-key": env.SENT_API_KEY,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(body),
-	});
+	try {
+		const response = await client.messages.send({
+			to: [params.to],
+			template: {
+				id: params.templateId,
+				...(params.parameters ? { parameters: params.parameters } : {}),
+			},
+			channel: ["sms", "whatsapp", "rcs"],
+			...(sandbox ? { sandbox: true } : {}),
+		});
 
-	const json = (await res.json().catch(() => null)) as SentResponse | null;
-
-	if (!res.ok || !json?.success) {
-		const code = json?.error?.code;
-		const message = json?.error?.message ?? `Sent API returned ${res.status}`;
-		throw new SentSmsError(res.status, code, message);
+		const messageId = response.data?.recipients?.[0]?.message_id;
+		const status = response.data?.status;
+		console.log(`[SentSMS] Sent — messageId: ${messageId}, status: ${status}`);
+		return { messageId, status };
+	} catch (err) {
+		if (err instanceof SentDm.APIError) {
+			throw new SentSmsError(err.status, err.constructor.name, err.message);
+		}
+		throw err;
 	}
-
-	const messageId = json.data?.recipients?.[0]?.message_id;
-	const status = json.data?.status;
-	console.log(`[SentSMS] Sent — messageId: ${messageId}, status: ${status}`);
-	return { messageId, status };
 }
