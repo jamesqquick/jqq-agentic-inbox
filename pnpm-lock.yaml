@@ -20,6 +20,9 @@ importers:
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@sentdm/sentdm':
+        specifier: ^0.32.0
+        version: 0.32.0
       '@tanstack/react-query':
         specifier: ^5.99.0
         version: 5.101.0(react@19.2.7)
@@ -1167,6 +1170,9 @@ packages:
     resolution: {integrity: sha512-X+zaP2x+j4RXGfbp/seSoRHWnPxzApilDszisZxbYH5C/jTxFhCtDNdPGZb9lJyYPs24wGxruPF7Y+sIXt9Gzw==}
     cpu: [x64]
     os: [win32]
+
+  '@sentdm/sentdm@0.32.0':
+    resolution: {integrity: sha512-rw+DVu0qGXjnA48uVxuelGxQ8J0qmv3UfcGDY5DOh4W0UnaYjViL8IaGgD1NFtqKGQ84cD5qOCFrgq5AgJ3rVQ==}
 
   '@shikijs/core@4.2.0':
     resolution: {integrity: sha512-Hc87Ab1Ld/vEbZRCbwx344I5v+4RU8CVToUTRkqXL1+TjbuOp9U5Xa0M23V4GEWHxVn+yO5otb+HkQVm3ptWQQ==}
@@ -4041,6 +4047,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.61.1':
     optional: true
+
+  '@sentdm/sentdm@0.32.0': {}
 
   '@shikijs/core@4.2.0':
     dependencies:

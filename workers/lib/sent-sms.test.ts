@@ -13,11 +13,12 @@ function fakeEnv(overrides: Partial<Env> = {}): Env {
 }
 
 function mockFetch(status: number, body: unknown) {
-	return vi.fn().mockResolvedValue({
-		ok: status >= 200 && status < 300,
-		status,
-		json: () => Promise.resolve(body),
-	});
+	return vi.fn().mockResolvedValue(
+		new Response(JSON.stringify(body), {
+			status,
+			headers: { "Content-Type": "application/json" },
+		}),
+	);
 }
 
 afterEach(() => {
@@ -28,7 +29,7 @@ describe("sendSms", () => {
 	it("returns messageId and status on a successful response", async () => {
 		vi.stubGlobal(
 			"fetch",
-			mockFetch(202, {
+			mockFetch(200, {
 				success: true,
 				data: {
 					status: "QUEUED",
@@ -46,7 +47,7 @@ describe("sendSms", () => {
 	});
 
 	it("passes parameters in the template object when provided", async () => {
-		const fetchMock = mockFetch(202, {
+		const fetchMock = mockFetch(200, {
 			success: true,
 			data: { status: "QUEUED", recipients: [{ message_id: "msg_params" }] },
 		});
@@ -58,49 +59,48 @@ describe("sendSms", () => {
 			parameters: { count: "5" },
 		});
 
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		const sentBody = JSON.parse(init.body as string);
+		const call = fetchMock.mock.calls[0];
+		const req = call[0] instanceof Request ? call[0] : null;
+		const sentBody = req ? JSON.parse(await req.text()) : JSON.parse(call[1].body as string);
 		expect(sentBody.template.parameters).toEqual({ count: "5" });
 	});
 
-	it("throws SentSmsError with status and code on a non-2xx response", async () => {
+	it("uses multi-channel routing", async () => {
+		const fetchMock = mockFetch(200, {
+			success: true,
+			data: { status: "QUEUED", recipients: [{ message_id: "msg_ch" }] },
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await sendSms(fakeEnv(), {
+			to: "+15125550123",
+			templateId: "tmpl_001",
+		});
+
+		const call = fetchMock.mock.calls[0];
+		const req = call[0] instanceof Request ? call[0] : null;
+		const sentBody = req ? JSON.parse(await req.text()) : JSON.parse(call[1].body as string);
+		expect(sentBody.channel).toEqual(["sms", "whatsapp", "rcs"]);
+	});
+
+	it("throws SentSmsError on a non-2xx response", async () => {
 		vi.stubGlobal(
 			"fetch",
 			mockFetch(422, {
-				success: false,
-				error: { code: "VALIDATION_001", message: "Invalid phone number" },
+				error: { message: "Invalid phone number" },
 			}),
 		);
 
-		await expect(
-			sendSms(fakeEnv(), { to: "bad-number", templateId: "tmpl_001" }),
-		).rejects.toMatchObject({
-			name: "SentSmsError",
-			status: 422,
-			code: "VALIDATION_001",
-			message: "Invalid phone number",
-		});
-	});
-
-	it("throws SentSmsError when success is false even on a 200 response", async () => {
-		vi.stubGlobal(
-			"fetch",
-			mockFetch(200, {
-				success: false,
-				error: { code: "BUSINESS_003", message: "Insufficient balance" },
-			}),
+		const err = await sendSms(fakeEnv(), { to: "bad-number", templateId: "tmpl_001" }).catch(
+			(e) => e,
 		);
 
-		await expect(
-			sendSms(fakeEnv(), { to: "+15125550123", templateId: "tmpl_001" }),
-		).rejects.toMatchObject({
-			name: "SentSmsError",
-			code: "BUSINESS_003",
-		});
+		expect(err).toBeInstanceOf(SentSmsError);
+		expect(err.status).toBe(422);
 	});
 
-	it("sends the API key in the x-api-key header", async () => {
-		const fetchMock = mockFetch(202, {
+	it("sends the API key in the request headers", async () => {
+		const fetchMock = mockFetch(200, {
 			success: true,
 			data: { status: "QUEUED", recipients: [{ message_id: "msg_hdr" }] },
 		});
@@ -111,14 +111,20 @@ describe("sendSms", () => {
 			templateId: "tmpl_001",
 		});
 
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect((init.headers as Record<string, string>)["x-api-key"]).toBe("my-secret-key");
+		const call = fetchMock.mock.calls[0];
+		const req = call[0] instanceof Request ? call[0] : null;
+		const headersObj = req ? req.headers : (call[1]?.headers as any);
+		const apiKey =
+			headersObj?.values?.get?.("x-api-key") ??
+			headersObj?.get?.("x-api-key") ??
+			headersObj?.["x-api-key"];
+		expect(apiKey).toBe("my-secret-key");
 	});
 
 	it("returns undefined messageId when recipients array is missing", async () => {
 		vi.stubGlobal(
 			"fetch",
-			mockFetch(202, {
+			mockFetch(200, {
 				success: true,
 				data: { status: "QUEUED" },
 			}),

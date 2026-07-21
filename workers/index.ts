@@ -21,6 +21,7 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 import { parseSubjectTag, routeEmailAction } from "./lib/actions";
+import { runMorningDigest } from "./lib/morning-digest";
 
 type AppContext = Context<MailboxContext>;
 
@@ -441,6 +442,13 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 			})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)),
 		);
 	}
+}
+
+if (import.meta.env.DEV) {
+	app.post("/api/v1/test/digest", async (c) => {
+		await runMorningDigest(c.env);
+		return c.json({ ok: true });
+	});
 }
 
 export { app, receiveEmail };

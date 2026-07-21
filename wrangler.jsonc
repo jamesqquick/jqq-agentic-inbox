@@ -19,7 +19,7 @@
     // Sent.dm SMS for the morning digest. SENT_API_KEY must be defined as a secret
     // (wrangler secret put SENT_API_KEY). Template variable must be named {{count}}.
     // Leave empty to disable SMS; fill with the approved template ID and an E.164 phone to enable.
-    "SENT_TEMPLATE_ID": "1335638948225448",
+    "SENT_TEMPLATE_ID": "ae3641a8-c869-4713-a659-0529731c527d",
     "DIGEST_SMS_RECIPIENT": "+19014866552",
     // Set to "true" to route all SMS through Sent.dm sandbox mode (validates without delivering).
     // Leave as "false" (or unset) in production to send real messages.
