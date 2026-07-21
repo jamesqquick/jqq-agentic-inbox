@@ -12,9 +12,6 @@ function fakeEnv(overrides: Partial<Env> = {}): Env {
 	} as unknown as Env;
 }
 
-/**
- * Return a proper Response object so the SDK's header/content-type parsing works.
- */
 function mockFetch(status: number, body: unknown) {
 	return vi.fn().mockResolvedValue(
 		new Response(JSON.stringify(body), {
@@ -63,7 +60,6 @@ describe("sendSms", () => {
 		});
 
 		const call = fetchMock.mock.calls[0];
-		// SDK passes a Request object as the first argument
 		const req = call[0] instanceof Request ? call[0] : null;
 		const sentBody = req ? JSON.parse(await req.text()) : JSON.parse(call[1].body as string);
 		expect(sentBody.template.parameters).toEqual({ count: "5" });
@@ -117,8 +113,6 @@ describe("sendSms", () => {
 
 		const call = fetchMock.mock.calls[0];
 		const req = call[0] instanceof Request ? call[0] : null;
-		// The SDK wraps headers in a NullableHeaders object { values: Headers }
-		// falling back to a plain Headers or Request if the shape changes.
 		const headersObj = req ? req.headers : (call[1]?.headers as any);
 		const apiKey =
 			headersObj?.values?.get?.("x-api-key") ??

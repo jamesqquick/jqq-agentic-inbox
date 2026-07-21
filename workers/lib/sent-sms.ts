@@ -1,16 +1,3 @@
-/**
- * SMS sending via the Sent.dm TypeScript SDK (@sentdm/sentdm).
- *
- * Sent is channel-agnostic: one API call routes to SMS, WhatsApp, or RCS
- * based on what's available and performs best for that recipient. Sent handles
- * carrier routing, formatting, fallbacks, and compliance — the code here stays
- * the same regardless of which channel delivers.
- *
- * Messages are template-based: create an approved template in the Sent dashboard,
- * then reference it by ID with your parameter values.
- *
- * Docs: https://docs.sent.dm/sdks/typescript
- */
 import SentDm from "@sentdm/sentdm";
 import type { Env } from "../types";
 
@@ -18,7 +5,6 @@ export interface SendSmsParams {
 	to: string; // E.164, e.g. "+15125550123"
 	templateId: string;
 	parameters?: Record<string, string>;
-	/** When true, validates the request against the Sent.dm API without delivering a real message. */
 	sandbox?: boolean;
 }
 
@@ -33,17 +19,6 @@ export class SentSmsError extends Error {
 	}
 }
 
-/**
- * Send a templated message via Sent.dm.
- *
- * Uses multi-channel routing — Sent selects SMS, WhatsApp, or RCS based on
- * what's available for the recipient. Sandbox mode validates without delivering.
- *
- * @param env     - Worker env (reads SENT_API_KEY and SENT_SANDBOX)
- * @param params  - Recipient, template ID, template parameters, and optional sandbox flag
- * @returns The Sent message ID and queue status
- * @throws SentSmsError on API errors
- */
 export async function sendSms(
 	env: Env,
 	params: SendSmsParams,
