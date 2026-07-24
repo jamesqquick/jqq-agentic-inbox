@@ -22,6 +22,8 @@ import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 import { parseSubjectTag, routeEmailAction } from "./lib/actions";
 import { runMorningDigest } from "./lib/morning-digest";
+import { parseJsonBody } from "./lib/validation";
+import { logSendRateLimitHit } from "./lib/rate-limit";
 
 type AppContext = Context<MailboxContext>;
 
@@ -42,6 +44,23 @@ const DraftBody = z.object({
 	in_reply_to: z.string().optional(),
 	thread_id: z.string().optional(),
 	draft_id: z.string().optional(),
+});
+
+const UpdateMailboxBody = z.object({
+	settings: z.record(z.any()),
+});
+
+const UpdateEmailBody = z.object({
+	read: z.boolean().optional(),
+	starred: z.boolean().optional(),
+});
+
+const MoveEmailBody = z.object({
+	folderId: z.string().min(1),
+});
+
+const FolderBody = z.object({
+	name: z.string().min(1),
 });
 
 // -- Helpers --------------------------------------------------------
@@ -102,7 +121,9 @@ app.get("/api/v1/mailboxes", async (c) => {
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
-	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
+	const parsed = await parseJsonBody(c, CreateMailboxBody);
+	if (!parsed.success) return parsed.response;
+	const { name, settings, email: rawEmail } = parsed.data;
 	const email = rawEmail.toLowerCase();
 	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
 	if (allowedAddresses.length > 0 && !allowedAddresses.map((a) => a.toLowerCase()).includes(email)) {
@@ -127,7 +148,9 @@ app.get("/api/v1/mailboxes/:mailboxId", async (c) => {
 
 app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
+	const parsed = await parseJsonBody(c, UpdateMailboxBody);
+	if (!parsed.success) return parsed.response;
+	const { settings } = parsed.data;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
 	await c.env.BUCKET.put(key, JSON.stringify(settings));
@@ -169,8 +192,9 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const body = SendEmailRequestSchema.parse(await c.req.json());
-	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
+	const parsed = await parseJsonBody(c, SendEmailRequestSchema);
+	if (!parsed.success) return parsed.response;
+	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = parsed.data;
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
@@ -183,7 +207,10 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 	const stub = c.var.mailboxStub;
 	const rateLimitError = await (stub as any).checkSendRateLimit();
-	if (rateLimitError) return c.json({ error: rateLimitError }, 429);
+	if (rateLimitError) {
+		logSendRateLimitHit(mailboxId, "api.sendEmail", rateLimitError);
+		return c.json({ error: rateLimitError }, 429);
+	}
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
 	await stub.createEmail(Folders.SENT, {
@@ -215,7 +242,9 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
+	const parsed = await parseJsonBody(c, DraftBody);
+	if (!parsed.success) return parsed.response;
+	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = parsed.data;
 	const stub = c.var.mailboxStub;
 	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
 	const messageId = crypto.randomUUID();
@@ -238,7 +267,9 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
-	const { read, starred } = (await c.req.json()) as { read?: boolean; starred?: boolean };
+	const parsed = await parseJsonBody(c, UpdateEmailBody);
+	if (!parsed.success) return parsed.response;
+	const { read, starred } = parsed.data;
 	const email = await c.var.mailboxStub.updateEmail(c.req.param("id")!, { read, starred });
 	return email ? c.json(email) : c.json({ error: "Email not found" }, 404);
 });
@@ -252,7 +283,9 @@ app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) => {
-	const { folderId } = (await c.req.json()) as { folderId: string };
+	const parsed = await parseJsonBody(c, MoveEmailBody);
+	if (!parsed.success) return parsed.response;
+	const { folderId } = parsed.data;
 	const success = await c.var.mailboxStub.moveEmail(c.req.param("id")!, folderId);
 	return success ? c.json({ status: "moved" }) : c.json({ error: "Folder not found" }, 400);
 });
@@ -278,7 +311,9 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
 app.get("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => c.json(await c.var.mailboxStub.getFolders()));
 
 app.post("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => {
-	const { name } = (await c.req.json()) as { name: string };
+	const parsed = await parseJsonBody(c, FolderBody);
+	if (!parsed.success) return parsed.response;
+	const { name } = parsed.data;
 	const slug = slugify(name);
 	if (!slug) return c.json({ error: "Folder name must contain alphanumeric characters" }, 400);
 	const f = await c.var.mailboxStub.createFolder(slug, name);
@@ -286,7 +321,9 @@ app.post("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => {
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
-	const { name } = (await c.req.json()) as { name: string };
+	const parsed = await parseJsonBody(c, FolderBody);
+	if (!parsed.success) return parsed.response;
+	const { name } = parsed.data;
 	const f = await c.var.mailboxStub.updateFolder(c.req.param("id")!, name);
 	return f ? c.json(f) : c.json({ error: "Folder not found" }, 404);
 });
@@ -331,6 +368,16 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 
 const MAX_EMAIL_SIZE = 25 * 1024 * 1024;
 
+type InboundEmailEvent = {
+	raw: ReadableStream;
+	rawSize: number;
+	to?: string;
+};
+
+function normalizeEmailAddress(address?: string | null) {
+	return address?.trim().toLowerCase() || undefined;
+}
+
 async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 	if (streamSize > MAX_EMAIL_SIZE) throw new Error(`Email too large: ${streamSize} bytes exceeds ${MAX_EMAIL_SIZE} byte limit`);
 	if (streamSize <= 0) throw new Error(`Invalid stream size: ${streamSize}`);
@@ -347,25 +394,28 @@ async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 	return result;
 }
 
-async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+async function receiveEmail(event: InboundEmailEvent, env: Env, ctx: ExecutionContext) {
 	console.log(`[Email] Incoming email — rawSize: ${event.rawSize} bytes`);
 	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
 
 	console.log(`[Email] Parsed — from: ${parsedEmail.from?.address}, to: ${parsedEmail.to?.map((t) => t.address).join(", ")}, subject: "${parsedEmail.subject}", attachments: ${parsedEmail.attachments?.length ?? 0}`);
 
-	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");
-
 	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map((a) => a.toLowerCase());
-	const allRecipients = parsedEmail.to.map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
-	const ccRecipients = (parsedEmail.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
-	const bccRecipients = (parsedEmail.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
+	const envelopeRecipient = normalizeEmailAddress(event.to);
+	const headerRecipients = (parsedEmail.to || []).map((t) => normalizeEmailAddress(t.address)).filter(Boolean) as string[];
+	// Use SMTP envelope recipient as primary — it is authoritative for BCC and catch-all routing.
+	// Fall back to the parsed To: header for environments that don't expose the envelope.
+	const routingRecipients = envelopeRecipient ? [envelopeRecipient] : headerRecipients;
+	const allRecipients = headerRecipients.length > 0 ? headerRecipients : routingRecipients;
+	const ccRecipients = (parsedEmail.cc || []).map((e) => normalizeEmailAddress(e.address)).filter(Boolean) as string[];
+	const bccRecipients = (parsedEmail.bcc || []).map((e) => normalizeEmailAddress(e.address)).filter(Boolean) as string[];
 
 	let mailboxId: string | undefined;
 	if (allowedAddresses.length > 0) {
-		mailboxId = allRecipients.find((addr) => allowedAddresses.includes(addr));
+		mailboxId = routingRecipients.find((addr) => allowedAddresses.includes(addr));
 		if (!mailboxId) { console.log(`Ignoring email: no recipient matches EMAIL_ADDRESSES.`); return; }
-	} else { mailboxId = allRecipients[0]; }
+	} else { mailboxId = routingRecipients[0]; }
 	if (!mailboxId) throw new Error("received email with no valid recipient address");
 
 	const messageId = crypto.randomUUID();

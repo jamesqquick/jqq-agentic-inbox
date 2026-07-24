@@ -17,6 +17,8 @@ import {
 import { SendEmailRequestSchema } from "../lib/schemas";
 import { Folders } from "../../shared/folders";
 import type { MailboxContext } from "../lib/mailbox";
+import { parseJsonBody } from "../lib/validation";
+import { logSendRateLimitHit } from "../lib/rate-limit";
 
 type AppContext = Context<MailboxContext>;
 type RateLimitStub = { checkSendRateLimit: () => Promise<string | null> };
@@ -24,8 +26,9 @@ type RateLimitStub = { checkSendRateLimit: () => Promise<string | null> };
 export async function handleReplyEmail(c: AppContext) {
 	const mailboxId = c.req.param("mailboxId") ?? "";
 	const id = c.req.param("id") ?? "";
-	const body = SendEmailRequestSchema.parse(await c.req.json());
-	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+	const parsed = await parseJsonBody(c, SendEmailRequestSchema);
+	if (!parsed.success) return parsed.response;
+	const { to, cc, bcc, from, subject, html, text, attachments } = parsed.data;
 
 	const toLogStr = Array.isArray(to) ? to.join(", ") : to;
 	console.log(`[Reply] Initiating reply — mailboxId: ${mailboxId}, emailId: ${id}, to: ${toLogStr}, subject: "${subject}"`);
@@ -53,6 +56,7 @@ export async function handleReplyEmail(c: AppContext) {
 	const rateLimitError = await (stub as unknown as RateLimitStub)
 		.checkSendRateLimit();
 	if (rateLimitError) {
+		logSendRateLimitHit(mailboxId, "api.replyEmail", rateLimitError);
 		return c.json({ error: rateLimitError }, 429);
 	}
 
@@ -120,8 +124,9 @@ export async function handleReplyEmail(c: AppContext) {
 export async function handleForwardEmail(c: AppContext) {
 	const mailboxId = c.req.param("mailboxId") ?? "";
 	const id = c.req.param("id") ?? "";
-	const body = SendEmailRequestSchema.parse(await c.req.json());
-	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+	const parsed = await parseJsonBody(c, SendEmailRequestSchema);
+	if (!parsed.success) return parsed.response;
+	const { to, cc, bcc, from, subject, html, text, attachments } = parsed.data;
 
 	const toLogStr = Array.isArray(to) ? to.join(", ") : to;
 	console.log(`[Forward] Initiating forward — mailboxId: ${mailboxId}, originalEmailId: ${id}, to: ${toLogStr}, subject: "${subject}"`);
@@ -148,6 +153,7 @@ export async function handleForwardEmail(c: AppContext) {
 	const rateLimitError = await (stub as unknown as RateLimitStub)
 		.checkSendRateLimit();
 	if (rateLimitError) {
+		logSendRateLimitHit(mailboxId, "api.forwardEmail", rateLimitError);
 		return c.json({ error: rateLimitError }, 429);
 	}
 
