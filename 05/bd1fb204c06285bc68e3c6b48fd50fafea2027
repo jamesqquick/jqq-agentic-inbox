@@ -1,0 +1,29 @@
+app/routes/search-results.tsx
+  s_94c02fb04791e7::t_7031b2211c3505 5,38,59,67-73,86,89-96
+workers/app.ts
+  s_94c02fb04791e7::t_7d7e52165e2ce9 129
+workers/durableObject/index.ts
+  s_94c02fb04791e7::t_ac6ea6ff5082b0 38-40,702-722,724-731,737-739
+workers/index.ts
+  s_94c02fb04791e7::t_4f40f0f93b3b9a 25-26,49-65,124-126,151-153,195-197,210-213,245-247,270-272,286-288,314-316,324-326,371-380,397,405-412,416,418
+workers/lib/tools.ts
+  s_94c02fb04791e7::t_f7a86b083aa998 30,412,491
+workers/routes/reply-forward.ts
+  s_94c02fb04791e7::t_c3f34360e2976c 20-21,29-31,59,127-129,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "05bd1fb204c06285bc68e3c6b48fd50fafea2027",
+  "prompts": {},
+  "sessions": {
+    "s_94c02fb04791e7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0751d3259ffe5F99zDTDjYQHWe",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
